@@ -25,6 +25,48 @@ internal static class Native
     [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
     [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
 
+    // processos: caminho do .exe e pacote da Store/Xbox, sem precisar de admin
+    public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    private const uint STILL_ACTIVE = 259;
+    [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll")] public static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll")] private static extern bool GetExitCodeProcess(IntPtr handle, out uint code);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool QueryFullProcessImageNameW(IntPtr handle, int flags, System.Text.StringBuilder name, ref int size);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetPackageFamilyName(IntPtr handle, ref uint length, System.Text.StringBuilder? name);
+
+    /// <summary>Caminho completo do .exe e o "package family" (jogos da Store/Xbox; null nos outros). null se não deu pra abrir.</summary>
+    public static (string? Path, string? Family) ProcessIdentity(uint pid)
+    {
+        var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == IntPtr.Zero) return (null, null);
+        try
+        {
+            var sb = new System.Text.StringBuilder(1024);
+            int size = sb.Capacity;
+            string? path = QueryFullProcessImageNameW(h, 0, sb, ref size) ? sb.ToString(0, size) : null;
+            uint len = 0;
+            string? family = null;
+            if (GetPackageFamilyName(h, ref len, null) == 122 && len > 0) // ERROR_INSUFFICIENT_BUFFER = tem pacote
+            {
+                var fb = new System.Text.StringBuilder((int)len);
+                if (GetPackageFamilyName(h, ref len, fb) == 0) family = fb.ToString();
+            }
+            return (path, family);
+        }
+        finally { CloseHandle(h); }
+    }
+
+    /// <summary>O processo ainda está rodando? (sem exceção pra processo protegido por anti-cheat)</summary>
+    public static bool IsAlive(uint pid)
+    {
+        var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == IntPtr.Zero) return Marshal.GetLastWin32Error() == 5; // acesso negado = existe
+        try { return GetExitCodeProcess(h, out var code) && code == STILL_ACTIVE; }
+        finally { CloseHandle(h); }
+    }
+
     public const int WM_HOTKEY = 0x0312;
     public const int WM_DISPLAYCHANGE = 0x007E;
     public const int WM_DPICHANGED = 0x02E0;

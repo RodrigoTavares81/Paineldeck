@@ -19,6 +19,20 @@ internal sealed class Settings
     public string PanelScene { get; private set; } = "classic";
     public string PanelUrl => PanelScene == "classic" ? "https://painel.local/index.html" : $"https://painel.local/scenes/{PanelScene}/index.html";
 
+    /// <summary>FPS pelo PresentMon ("fps" no settings.json): liga/desliga, caminho do .exe e argumentos ({pid}, {exe}).</summary>
+    public bool FpsEnabled { get; private set; } = true;
+    public string FpsPresentMon { get; private set; } = "";
+    public string FpsArgs { get; private set; } = DefaultFpsArgs;
+    public const string DefaultFpsArgs = "--process_id {pid} --output_stdout --stop_existing_session --session_name PainelDeckFps --terminate_on_proc_exit";
+    /// <summary>Se o app der erro grave, abre de novo sozinho ("autoRestart", padrão true; no máximo 3x em 10 min).</summary>
+    public bool AutoRestart { get; private set; } = true;
+    /// <summary>De onde vem a atualização ("update": { "repo", "branch", "check" }).</summary>
+    public string UpdateRepo { get; private set; } = "RodrigoTavares81/paineldeck";
+    public string UpdateBranch { get; private set; } = "main";
+    public bool UpdateCheck { get; private set; } = true;
+    /// <summary>Rodando pelo código-fonte (dotnet run): a pasta tem o .csproj. Aí atualização é com git, não pelo botão.</summary>
+    public bool DevMode => File.Exists(Path.Combine(Root, "PainelDeck.csproj"));
+
     private string FilePath => Path.Combine(Root, "settings.json");
     private static readonly JsonDocumentOptions DocOpts = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
 
@@ -37,6 +51,19 @@ internal sealed class Settings
         if (node["hotkeys"] is JsonObject hk)
             foreach (var (k, v) in hk)
                 if (v is JsonValue jv && jv.TryGetValue<string>(out var keys)) s.Hotkeys[k] = keys;
+        if (node["fps"] is JsonObject fps)
+        {
+            if (fps["enabled"] is JsonValue fe && fe.TryGetValue<bool>(out var on)) s.FpsEnabled = on;
+            s.FpsPresentMon = Str(fps, "presentMon");
+            if (Str(fps, "args") is { Length: > 0 } fa) s.FpsArgs = fa;
+        }
+        if (node["autoRestart"] is JsonValue ar && ar.TryGetValue<bool>(out var restart)) s.AutoRestart = restart;
+        if (node["update"] is JsonObject up)
+        {
+            if (Str(up, "repo") is { Length: > 0 } repo && System.Text.RegularExpressions.Regex.IsMatch(repo, @"^[\w.-]+/[\w.-]+$")) s.UpdateRepo = repo;
+            if (Str(up, "branch") is { Length: > 0 } br && System.Text.RegularExpressions.Regex.IsMatch(br, @"^[\w./-]+$")) s.UpdateBranch = br;
+            if (up["check"] is JsonValue uc && uc.TryGetValue<bool>(out var chk)) s.UpdateCheck = chk;
+        }
         if (node["panelScene"] is JsonValue sc && sc.TryGetValue<string>(out var scene) && IsScene(s.WebRoot, scene)) s.PanelScene = scene;
         return s;
     }
@@ -114,7 +141,7 @@ internal sealed class Settings
     }
 
     /// <summary>Em dev (dotnet run) usa a pasta do projeto, assim editar o wwwroot recarrega na hora.</summary>
-    private static string FindRoot()
+    internal static string FindRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
             if (File.Exists(Path.Combine(dir.FullName, "PainelDeck.csproj"))) return dir.FullName;

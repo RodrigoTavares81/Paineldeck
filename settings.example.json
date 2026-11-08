@@ -8,5 +8,11 @@
     "password": ""
   },
   // atalhos globais: nome → teclas
-  "hotkeys": { "rest": "ctrl+alt+h" }
+  "hotkeys": { "rest": "ctrl+alt+h" },
+  // FPS do modo jogo (PresentMon em tools\, baixado pelo scripts\ativar-fps.ps1)
+  "fps": { "enabled": true, "presentMon": "", "args": "" },
+  // se o app der erro grave, abre de novo sozinho (no máximo 3x em 10 min)
+  "autoRestart": true,
+  // de onde vem a atualização do botão "Atualizar" (confere a cada 6h)
+  "update": { "repo": "RodrigoTavares81/paineldeck", "branch": "main", "check": true }
 }

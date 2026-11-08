@@ -25,6 +25,18 @@
       </div>
 
       <div class="chips">
+        <!-- modo jogo: "JOGANDO · 1h12" (some quando não tem jogo aberto) -->
+        <div class="chip playing" id="chip-play" hidden><i class="rec"></i><span>JOGANDO</span><b id="chip-play-time">0min</b></div>
+        <!-- fora do jogo: tempo jogado hoje; toque mostra o histórico da semana -->
+        <button class="chip action" id="chip-week" hidden title="Tempo de jogo da semana">
+          <svg viewBox="0 0 24 24"><path d="M7 6h10a5 5 0 0 1 4.9 6l-1.1 5.2a2.6 2.6 0 0 1-4.5 1.2L14.2 16H9.8l-2.1 2.4a2.6 2.6 0 0 1-4.5-1.2L2.1 12A5 5 0 0 1 7 6Zm1 3v2H6v2h2v2h2v-2h2v-2h-2V9Zm8.5 1a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm-2 2.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z"/></svg>
+          <span>hoje</span><b id="chip-week-time">0min</b>
+        </button>
+        <!-- atualização: aparece quando tem versão nova no GitHub (2 toques pra instalar) -->
+        <button class="chip action update" id="chip-update" hidden title="Atualizar o PainelDeck">
+          <svg viewBox="0 0 24 24" class="ico-up"><path d="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-2.05-4.95L14 10h7V3l-2.64 2.64A8.97 8.97 0 0 0 12 3Z"/></svg>
+          <span id="chip-update-text">Atualizar</span>
+        </button>
         <button class="chip action" id="btn-rest" title="Modo descanso (Ctrl+Alt+H)">
           <svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
           <span>Descansar</span><kbd>Ctrl Alt H</kbd>
@@ -62,6 +74,43 @@
           </div>
         </div>
       </div>
+    </section>
+
+    <!-- ===== modo jogo: entra no lugar das férias quando um jogo abre ===== -->
+    <section class="card gamehero swap" id="gamehero">
+      <div class="g-art" id="g-art"></div>
+      <div class="g-body">
+        <div class="kicker"><i class="rec"></i><span id="g-kicker">JOGANDO AGORA</span><span class="paused" id="g-paused">PAUSADO</span></div>
+        <div class="g-name" id="g-name">—</div>
+        <div class="g-fps" id="g-fps"><span class="num" id="g-fps-num">--</span><span class="unit">FPS</span></div>
+        <div class="g-fps-sub" id="g-fps-sub">&nbsp;</div>
+        <svg class="g-spark" id="g-spark" viewBox="0 0 300 70" preserveAspectRatio="none">
+          <defs><linearGradient id="g-spark-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#8fb0ff" stop-opacity=".35"/><stop offset="1" stop-color="#8fb0ff" stop-opacity="0"/></linearGradient></defs>
+          <path class="area" d=""/><path class="line" d=""/><circle class="head" r="3.5" cx="-10" cy="-10"/>
+        </svg>
+        <div class="g-stats">
+          <div><span class="k">SESSÃO</span><b id="g-session">0:00:00</b></div>
+          <div><span class="k">HOJE</span><b id="g-today">0min</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== modo jogo: macros do jogo (no lugar da prateleira de jogos) ===== -->
+    <section class="card gmacros swap" id="gmacros">
+      <div class="card-head">
+        <span class="label" id="gm-label">MACROS DO JOGO</span>
+        <button class="head-btn" id="gm-all" title="Todas as macros">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg><span>todas</span>
+        </button>
+      </div>
+      <div class="gm-grid" id="gm-grid"></div>
+    </section>
+
+    <!-- ===== tempo de jogo da semana (no lugar das notícias: no modo jogo, ou tocando no "hoje") ===== -->
+    <section class="card playtime swap" id="playtime">
+      <div class="card-head"><span class="label">TEMPO DE JOGO</span><span class="pt-total" id="pt-total"></span></div>
+      <div class="pt-bars" id="pt-bars"></div>
+      <ol class="pt-top" id="pt-top"></ol>
     </section>
 
     <!-- ===== jogos (vem do deck.json, seção "games") ===== -->

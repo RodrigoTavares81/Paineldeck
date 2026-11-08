@@ -95,14 +95,43 @@ coisas no painel: `claude`, `games` (roda de jogos) e `macros` (gaveta de macros
 No OBS: **Ferramentas → Configurações do servidor WebSocket** → ativar (porta 4455). Se tiver senha,
 coloque no `settings.json`. Os botões da página "OBS" usam nomes de cena de exemplo, então troque pelos seus no `deck.json`.
 
-## Iniciar com o Windows
+## 🎮 Modo jogo
+
+Abriu um jogo, o painel percebe sozinho (a cada 2s, só lendo a lista de processos, sem mexer em janela nenhuma) e troca de cara:
+na **Navy**, as férias viram o **FPS ao vivo** (com 1% low, média e gráfico do último minuto), a prateleira vira as **macros do jogo**
+e as notícias viram o **tempo de jogo da semana**. No topo aparece **JOGANDO · 1h12**. Fechou o jogo, volta tudo.
+No clássico tem o widget `{ "widget": "jogo" }` e o `"page"` do jogo (abre aquela página junto com o jogo).
+
+Como ele reconhece: pelo `"process"` do jogo (`"ForHonor.exe"`), pelo pacote da Store/Xbox (o `shell:AppsFolder\...` da ação)
+ou pela pasta da biblioteca (Steam, Ubisoft, Epic, Xbox, GOG, Riot, EA, Battle.net) parecida com o nome do jogo. Jogos fora da lista
+também contam, com o nome da pasta (`"detectUnknown": false` desliga). Configuração em `"gameMode"` e em cada jogo de `"games"`
+(veja o topo do `deck.json`): `macros`, `page`, `onStart`/`onStop` (ex.: mutar o Discord ao abrir).
+
+**FPS:** vem do [PresentMon](https://github.com/GameTechDev/PresentMon) (Intel, open source), que lê os eventos de "present" do
+próprio Windows, sem injetar nada no jogo (tranquilo com anti-cheat). Pra ligar, rode **uma vez** `scripts\ativar-fps.ps1`
+(botão direito → Executar com o PowerShell): ele baixa o PresentMon pra `tools\` e põe seu usuário no grupo
+"Usuários de log de desempenho" do Windows (pede o UAC). Depois saia e entre no Windows. Sem isso, o modo jogo funciona igual, só sem FPS.
+
+**Tempo de jogo:** fica em `playtime.json` (só no seu PC). Conta só enquanto o jogo está aberto **e** você está mexendo:
+parado mais de `"idleMinutes"` (padrão 10) não conta. Fora do jogo, o chip **hoje 1h08** no topo da Navy mostra a semana.
+
+## Iniciar com o Windows, reinício e atualização
+
+- **Iniciar com o Windows:** bandeja → **Iniciar com o Windows** (fica marcado; desmarca pra desligar).
+- **Se der erro grave**, o app grava em `logs\crash.log` e abre de novo sozinho (no máximo 3 vezes em 10 minutos).
+  Se a parte do navegador travar, a página recarrega sozinha. Bandeja → **Reiniciar** fecha e abre.
+- **Atualizar:** o app confere no GitHub a cada 6h. Quando tem versão nova, aparece **Atualizar · abc1234** no topo da Navy
+  (toque duas vezes) e na bandeja. Ele baixa, compila (precisa do .NET 8 SDK) e só fecha o painel se a compilação deu certo;
+  aí instala e abre de novo, tudo escondido. **Seus arquivos ficam:** `deck.json`, `settings.json`, `playtime.json` e as capas
+  nunca são trocados, e o que você (ou o ✨ Claude) mudou no `wwwroot` e no `scripts` é mantido (se a versão nova também mudou o
+  mesmo arquivo, ela fica do lado como `.novo`). Backup das 5 últimas versões em `.atualizacao\backups`.
+  Rodando pelo código-fonte (`dotnet run`), use `git pull`.
+
+Pra montar a pasta do app na mão:
 
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained false -o publish
+dotnet publish -c Release -o C:\Users\voce\PainelDeck\app
 ```
-
-Depois crie um atalho de `publish\PainelDeck.exe` em `shell:startup`.
-(Na versão publicada, edite o `publish\deck.json` e os arquivos em `publish\wwwroot`.)
 
 ## Se o jogo perder o foco
 

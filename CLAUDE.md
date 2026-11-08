@@ -39,6 +39,13 @@ Quando um pedido chega pelo botão "✨ Pedir ao Claude", o painel está rodando
      `{ title, items: [{ title, source, url, published }], updated, error }`. Quem busca é o C# (os feeds não liberam CORS),
      com cache e atualização em segundo plano. Os feeds ficam na seção raiz opcional `"news"` do `deck.json`:
      `{ "title": "IA", "feeds": ["https://...rss"], "max": 8, "refreshMinutes": 20 }` (sem ela: Google News sobre IA em PT-BR).
+   - **Modo jogo:** o C# acha o jogo aberto sozinho e manda `status.game` = `{ name, image, exe, known, since, sessionSec,
+     todaySec, idle, fps, fpsLow, fpsAvg, fpsInfo }` (ou `null`). Na Navy ele troca férias/jogos/notícias pela tela do jogo;
+     no clássico existe o widget `"jogo"` e o `"page"` do jogo. Por jogo em `"games"`: `"process"`, `"macros"` (botões da tela do jogo),
+     `"page"`, `"onStart"`/`"onStop"`; geral em `"gameMode"`. Tempo de jogo: `Bridge.call("playtime")` →
+     `{ today, week: [{ date, label, today, total, games }], weekTotal, top, monthTotal, sessions, playing }` (segundos).
+   - **Atualização:** `status.update` = `{ state, message, installed, latest, title }`; `Bridge.call("update")` instala
+     (não chame sozinho: só com o Rodrigo pedindo).
    - **Modo descanso:** `wwwroot/scenes/rest/` desenha um céu/mar nos monitores que não são o painel (Ctrl+Alt+H,
      ou a ação `{ "type": "rest" }` só na Navy). Qualquer mouse/teclado acorda. Simulador: `scenes/rest/preview.html`.
 4. **`scripts/`** — pra coisas que o JS e as ações não fazem (PowerShell `.ps1` é o padrão). Chame com

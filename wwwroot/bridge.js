@@ -31,11 +31,28 @@ window.Bridge = (() => {
     wv.postMessage({ type: "ready" });
   } else {
     let mic = false;
+    // preview com "?jogo" na URL simula um jogo aberto (modo jogo); "?jogo=sem-fps" simula sem o PresentMon
+    const q = new URLSearchParams(location.search);
+    const fakeGame = q.has("jogo") ? { since: Date.now() - 72 * 60000, noFps: q.get("jogo") === "sem-fps" } : null;
+    const fakeGameStatus = () => {
+      if (!fakeGame) return null;
+      const t = Date.now() / 1000, sec = Math.round((Date.now() - fakeGame.since) / 1000);
+      const fps = Math.round(142 + 18 * Math.sin(t / 4) + Math.random() * 8 - (Math.random() < 0.05 ? 40 : 0));
+      return {
+        name: q.get("nome") || "For Honor", image: "games/for-honor.jpg", exe: "ForHonor.exe", known: true,
+        since: new Date(fakeGame.since).toISOString(), sessionSec: sec, todaySec: sec + 1840, idle: false,
+        fps: fakeGame.noFps ? null : fps, fpsLow: fakeGame.noFps ? null : 96, fpsAvg: fakeGame.noFps ? null : 144,
+        fpsInfo: fakeGame.noFps ? "Pra ver o FPS, rode scripts\\ativar-fps.ps1 uma vez" : null,
+      };
+    };
+    const fakeUpdate = { state: q.has("update") ? "available" : "current", installed: "37a6078", latest: "9f3c2d1", title: "Modo jogo, tempo de jogo e atualização" };
     const fake = () => emit({
       cpu: 6 + Math.random() * 22, ram: 54 + Math.random() * 2,
       ramUsedGb: 17.3, ramTotalGb: 31.9, micMuted: mic, obs: false,
       gpu: 8 + Math.random() * 30, vram: 21, vramUsedGb: 2.5, vramTotalGb: 11.9, gpuTemp: 47,
+      game: fakeGameStatus(), update: { ...fakeUpdate },
     });
+    window.__previewUpdate = fakeUpdate;
     fake();
     setInterval(fake, 1000);
     loadPreviewDeck();
@@ -126,6 +143,24 @@ window.Bridge = (() => {
       ].map(([title, source, min], i) => ({ title, source, url: "https://news.google.com/", published: ago(min) }));
       return { title: "IA", items, updated: new Date().toISOString(), error: null };
     }
+    if (method === "playtime") {
+      const names = ["For Honor", "ARC Raiders", "Rematch"];
+      const week = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(Date.now() - (6 - i) * 86400000);
+        const games = names.map((name, k) => ({ name, sec: Math.round(Math.max(0, Math.sin(i * 1.7 + k * 2.1) + 0.3) * 3600 * (k === 0 ? 1.6 : 0.9)) })).filter((g) => g.sec > 300);
+        return { date: d.toISOString().slice(0, 10), label: d.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", ""), today: i === 6, total: games.reduce((a, g) => a + g.sec, 0), games };
+      });
+      const totals = {};
+      week.forEach((w) => w.games.forEach((g) => (totals[g.name] = (totals[g.name] || 0) + g.sec)));
+      const top = Object.entries(totals).map(([name, sec]) => ({ name, sec })).sort((a, b) => b.sec - a.sec);
+      return { today: { total: week[6].total, games: week[6].games }, week, weekTotal: week.reduce((a, w) => a + w.total, 0), top, monthTotal: 151200, sessions: [], playing: null };
+    }
+    if (method === "update") {
+      const u = window.__previewUpdate;
+      if (!args.check) { u.state = "working"; u.message = "Preview: no app, baixaria e instalaria a versão nova"; setTimeout(() => { u.state = "done"; u.message = "Atualizado pra versão 9f3c2d1"; }, 4000); }
+      return u;
+    }
+    if (method === "autostart") return !!args.on;
     if (method === "pickFile") return prompt("Caminho do programa (no app abre o seletor de arquivos):", "notepad.exe");
     return null;
   }

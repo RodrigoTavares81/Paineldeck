@@ -18,6 +18,10 @@ public sealed class PanelForm : Form
     private readonly Mic mic = new();
     private readonly Media media = new();
     private readonly News news = new();
+    private readonly Playtime playtime;
+    private readonly Fps fps;
+    private readonly GameMode game;
+    private readonly Updater updater;
     private RestMode? rest; // criado junto com o WebView (usa o mesmo ambiente)
     private readonly NotifyIcon tray = new();
     private readonly System.Windows.Forms.Timer statusTimer = new() { Interval = 1000 };
@@ -33,14 +37,20 @@ public sealed class PanelForm : Form
     private FileSystemWatcher? deckWatcher;
     private IntPtr lastExternalWindow;
     private bool editMode;
+    private bool quitting; // fechando pra atualizar/reiniciar
     private readonly uint myPid = (uint)Environment.ProcessId;
 
-    public PanelForm()
+    internal PanelForm(Settings settings)
     {
-        settings = Settings.Load();
+        this.settings = settings;
         deck = new Deck(settings.Root);
         deck.Reload();
         runner = new ActionRunner(settings, deck, mic, EnsureTargetFocused);
+        playtime = new Playtime(settings.Root);
+        fps = new Fps(settings);
+        game = new GameMode(deck, playtime, fps, a => runner.RunAsync(a));
+        updater = new Updater(settings, () => { quitting = true; Close(); });
+        Crash.BeforeExit += () => { fps.Dispose(); playtime.Dispose(); tray.Visible = false; };
 
         Text = "PainelDeck";
         FormBorderStyle = FormBorderStyle.None;
@@ -50,6 +60,7 @@ public sealed class PanelForm : Form
         BackColor = Color.Black;
         Controls.Add(web);
         SetupTray();
+        if (updater.State == "done") tray.ShowBalloonTip(6000, "PainelDeck", updater.Message ?? "Atualizado", ToolTipIcon.Info);
         ApplyScreen(allowShow: false); // antes de aparecer (quem mostra é o Application.Run): sem o monitor, nem aparece
 
         screenDebounce.Tick += (_, _) => { screenDebounce.Stop(); ApplyScreen(); };
@@ -75,6 +86,7 @@ public sealed class PanelForm : Form
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: soltar senão vaza
             hotkeys.Dispose();
             rest?.CloseNow(); media.Dispose();
+            game.Dispose(); fps.Dispose(); playtime.Dispose(); updater.Dispose();
             tray.Visible = false; tray.Dispose(); watcher?.Dispose(); deckWatcher?.Dispose();
         };
     }
@@ -207,10 +219,31 @@ public sealed class PanelForm : Form
         cw.Settings.IsStatusBarEnabled = false;
         cw.Settings.AreDefaultContextMenusEnabled = false;
         cw.WebMessageReceived += (_, e) => _ = HandleMessageAsync(e.WebMessageAsJson);
+        cw.ProcessFailed += (_, e) => BeginInvoke(() => OnWebViewFailed(e.ProcessFailedKind));
         cw.Navigate(settings.PanelUrl);
 
         statusTimer.Start();
         StartWatcher();
+    }
+
+    /// <summary>A parte do navegador caiu: página travada/fechada recarrega; o navegador inteiro caído reinicia o app.</summary>
+    private void OnWebViewFailed(CoreWebView2ProcessFailedKind kind)
+    {
+        Crash.Log($"WebView2 falhou: {kind}", null);
+        if (kind == CoreWebView2ProcessFailedKind.BrowserProcessExited) Restart();
+        else if (kind is CoreWebView2ProcessFailedKind.RenderProcessExited or CoreWebView2ProcessFailedKind.RenderProcessUnresponsive
+                 or CoreWebView2ProcessFailedKind.FrameRenderProcessExited)
+            try { web.CoreWebView2?.Reload(); } catch { Restart(); }
+    }
+
+    /// <summary>Fecha e abre de novo (a instância nova espera esta sair).</summary>
+    private void Restart()
+    {
+        if (quitting) return;
+        if (!Crash.AllowRestart()) return;
+        quitting = true;
+        Crash.Relaunch();
+        Close();
     }
 
     private async Task HandleMessageAsync(string json)
@@ -290,6 +323,21 @@ public sealed class PanelForm : Form
                 else rest?.Exit();
                 return null;
 
+            case "playtime":
+                return playtime.Summary();
+
+            case "update": // { check: true } confere agora; sem nada, começa a atualização
+                if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("check", out var chk) && chk.ValueKind == JsonValueKind.True)
+                    _ = updater.CheckAsync();
+                else
+                    updater.Start();
+                return updater.Status();
+
+            case "autostart": // { on: true|false } liga/desliga; sem nada, só diz como está
+                if (args.ValueKind == JsonValueKind.Object && args.TryGetProperty("on", out var au) && au.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    Autostart.Set(au.GetBoolean());
+                return Autostart.Enabled;
+
             case "pickFile":
                 using (var dlg = new OpenFileDialog
                 {
@@ -327,6 +375,8 @@ public sealed class PanelForm : Form
                 : null,
             micMuted = mic.IsMuted(),
             obs = runner.ObsConnected,
+            game = game.Status(),
+            update = updater.Status(),
         });
     }
 
@@ -461,6 +511,42 @@ public sealed class PanelForm : Form
             userHidden = !userHidden;
             if (userHidden) Hide(); else ApplyScreen();
         });
+        menu.Items.Add(new ToolStripSeparator());
+
+        var autostart = new ToolStripMenuItem("Iniciar com o Windows") { CheckOnClick = false };
+        autostart.Click += (_, _) =>
+        {
+            try { Autostart.Set(!Autostart.Enabled); }
+            catch (Exception ex) { tray.ShowBalloonTip(4000, "PainelDeck", "Não consegui mudar: " + ex.Message, ToolTipIcon.Warning); }
+        };
+        menu.Items.Add(autostart);
+        var update = new ToolStripMenuItem("Procurar atualização");
+        update.Click += async (_, _) =>
+        {
+            try
+            {
+                if (updater.State == "available") { updater.Start(); return; }
+                await updater.CheckAsync();
+                tray.ShowBalloonTip(4000, "PainelDeck", updater.State == "available"
+                    ? $"Tem versão nova: {updater.LatestTitle}. Clique em \"Atualizar agora\" na bandeja ou no painel."
+                    : updater.Message ?? "", ToolTipIcon.Info);
+            }
+            catch (Exception ex) { tray.ShowBalloonTip(5000, "PainelDeck", ex.Message, ToolTipIcon.Warning); }
+        };
+        menu.Items.Add(update);
+        menu.Items.Add("Reiniciar", null, (_, _) => { Crash.Relaunch(); quitting = true; Close(); });
+        menu.Opening += (_, _) =>
+        {
+            autostart.Checked = Autostart.Enabled;
+            update.Enabled = updater.State is not ("working" or "dev");
+            update.Text = updater.State switch
+            {
+                "available" => $"Atualizar agora ({updater.Latest?[..7]})",
+                "working" => "Atualizando…",
+                "dev" => "Atualização: use git pull (código-fonte)",
+                _ => "Procurar atualização",
+            };
+        };
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Sair", null, (_, _) => Close());
         tray.ContextMenuStrip = menu;
