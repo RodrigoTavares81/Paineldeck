@@ -1,0 +1,12 @@
+{
+  // Copie para settings.json e ajuste.
+  // "auto" = menor monitor que não é o principal. Também aceita 1, 2, 3...
+  // Dica: escolha pelo ícone na bandeja → "Monitor do painel" (salva aqui sozinho).
+  "monitor": "auto",
+  "obs": {
+    "url": "ws://127.0.0.1:4455",
+    "password": ""
+  },
+  // atalhos globais: nome → teclas
+  "hotkeys": { "rest": "ctrl+alt+h" }
+}

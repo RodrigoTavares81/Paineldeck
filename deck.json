@@ -1,0 +1,150 @@
+// =====================================================================
+//  PainelDeck — deck.json: TUDO que o painel faz fica aqui.
+//  Salvou este arquivo → o painel atualiza sozinho (sem reiniciar o app).
+//  Pode usar comentários // e vírgula sobrando no fim das listas.
+// =====================================================================
+//
+//  Cada item de uma página é um BOTÃO ou um WIDGET:
+//
+//   Botão:  { "icon": "🎙️", "label": "Mic", "action": {...}, "color": "#ff3b5c" }
+//   Widget: { "widget": "clock" }    (tipos: ferias, countdown, clock, stat — veja wwwroot/widgets.js)
+//
+//   "w" / "h"  → quantas colunas/linhas o item ocupa (padrão 1x1)
+//   "page"     → em vez de action, troca de página (número ou nome): { "page": "OBS" }
+//   "state"    → campo do status que deixa o botão "aceso" (ex.: "micMuted", "obs")
+//   "on"       → ícone/texto quando aceso: { "icon": "🔇", "label": "Mutado" }
+//
+//  Tipos de action:
+//   { "type": "keys",   "keys": "ctrl+shift+m" }            atalho de teclado
+//   { "type": "type",   "text": "gg wp\n" }                 digita texto
+//   { "type": "media",  "key": "playpause" }                playpause | next | prev | volup | voldown | volmute
+//   { "type": "macro",  "steps": [ ... ] }                  sequência; um passo { "delay": 80 } espera em ms
+//   { "type": "macro",  "ref": "gg" }                       usa uma macro da seção "macros" lá embaixo
+//   { "type": "run",    "path": "notepad.exe", "args": "", "cwd": "" }   abre programa
+//   { "type": "url",    "url": "https://..." }              abre link / protocolo (spotify:, steam://...)
+//   { "type": "script", "file": "ola.ps1", "args": "", "hidden": true }  script da pasta /scripts (.ps1 .bat .cmd .py .js)
+//   { "type": "mic",    "mode": "toggle" }                  toggle | mute | unmute (mic padrão do Windows)
+//   { "type": "obs",    "request": "ToggleRecord", "data": {} }   qualquer request do obs-websocket v5
+//   { "type": "games" }                                     abre a roda de jogos (lista "games" lá embaixo)
+//   { "type": "macros" }                                    abre a gaveta com todas as macros de "macros"
+//
+//  Layout livre: página com "layout": "free" → cada item tem "x", "y", "w", "h" em % da tela (0–100)
+//  e "z" opcional (maior fica por cima). Página sem "layout" usa a grade "grid" antiga (w/h em células);
+//  o editor ✏️ converte pra % quando você salva.
+//
+//  "games": lista da roda de jogos → { "name": "...", "image": "games/arquivo.jpg", "action": {...} }
+//  (imagens na pasta wwwroot/games)
+//
+//  "news": notícias da cena Navy (opcional) → { "title": "IA", "feeds": ["https://...rss"], "max": 8, "refreshMinutes": 20 }
+//  (RSS ou Atom; sem essa seção usa o Google News sobre IA em português)
+// =====================================================================
+{
+  "grid": {
+    "cols": 5,
+    "rows": 3
+  },
+  "macros": {
+    "gg": [
+      {
+        "keys": "enter",
+        "type": "keys"
+      },
+      {
+        "delay": 80
+      },
+      {
+        "text": "gg wp",
+        "type": "type"
+      },
+      {
+        "delay": 40
+      },
+      {
+        "keys": "enter",
+        "type": "keys"
+      }
+    ]
+  },
+  "pages": [
+    {
+      "items": [
+        {
+          "h": 2,
+          "inicio": "2026-11-09",
+          "volta": "2026-11-24",
+          "w": 2,
+          "widget": "ferias"
+        },
+        {
+          "widget": "clock"
+        },
+        {
+          "label": "CPU",
+          "metric": "cpu",
+          "widget": "stat"
+        },
+        {
+          "label": "RAM",
+          "metric": "ram",
+          "widget": "stat"
+        },
+        {
+          "label": "VRAM",
+          "metric": "vram",
+          "widget": "stat"
+        },
+        {
+          "action": {
+            "type": "mic"
+          },
+          "color": "#ff3b5c",
+          "icon": "🎙️",
+          "label": "Mic",
+          "on": {
+            "icon": "🔇",
+            "label": "Mutado"
+          },
+          "state": "micMuted"
+        },
+        {
+          "action": {
+            "keys": "ctrl+shift+m",
+            "type": "keys"
+          },
+          "color": "#5865f2",
+          "icon": "🎧",
+          "label": "Discord mute"
+        },
+        {
+          "action": {
+            "type": "games"
+          },
+          "color": "#22d3ee",
+          "icon": "🎮",
+          "label": "Jogos"
+        },
+        {
+          "action": {
+            "type": "macros"
+          },
+          "color": "#f59e0b",
+          "icon": "🔁",
+          "label": "Macros"
+        },        {
+          "action": {
+            "keys": "win+shift+s",
+            "type": "keys"
+          },
+          "icon": "✂️",
+          "label": "Print"
+        }
+      ],
+      "name": "Principal"
+    }
+    ],
+  "games": [
+    { "name": "For Honor", "image": "games/for-honor.jpg", "action": { "type": "url", "url": "uplay://launch/569/0" } },
+    { "name": "ARC Raiders", "image": "games/arc-raiders.jpg", "action": { "type": "url", "url": "steam://rungameid/1808500" } },
+    { "name": "Rematch", "image": "games/rematch.png", "action": { "type": "run", "path": "explorer.exe", "args": "shell:AppsFolder\\SLOCLAP.ProjectRuntime_cse8z5zpmcvkt!AppRematchShipping" } }
+  ]
+}

@@ -1,0 +1,13 @@
+# build
+bin/
+obj/
+.vs/
+*.user
+
+# configuração pessoal de cada PC (veja settings.example.json)
+settings.json
+deck.backup*.json
+
+# capas dos jogos: arte oficial dos jogos, fica só no PC (veja wwwroot/games/README.md)
+wwwroot/games/*
+!wwwroot/games/README.md

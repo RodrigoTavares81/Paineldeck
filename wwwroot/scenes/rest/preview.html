@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>PainelDeck · simulador do modo descanso</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1a1d24; font-family: Inter, "Segoe UI", sans-serif; color: #9aa3b5; overflow: hidden; }
+    #desk { position: absolute; left: 50%; top: 50%; transform-origin: 0 0; }
+    .mon { position: absolute; background: #000; border-radius: 6px; box-shadow: 0 0 0 10px #0d0f14, 0 0 0 11px #2a2f3a, 0 30px 60px -20px #000; overflow: hidden; }
+    .mon iframe { border: 0; transform-origin: 0 0; pointer-events: none; }
+    .tag { position: absolute; top: calc(100% + 16px); left: 0; right: 0; text-align: center; font-size: 13px; letter-spacing: .08em; }
+    .mon .tag { color: #9aa3b5; }
+    h1 { position: absolute; left: 24px; top: 16px; margin: 0; font-size: 14px; font-weight: 600; letter-spacing: .1em; color: #c9d2e6; }
+  </style>
+</head>
+<body>
+  <h1>SIMULADOR · MODO DESCANSO (monitores no tamanho físico real)</h1>
+  <div id="desk"></div>
+  <script>
+    // mesmo formato que o app manda. Tamanhos em mm vêm do EDID de cada monitor.
+    const layout = { gapMm: 18, monitors: [
+      { id: "AOC2702", name: "AOC 27G2G8", px: { x: -1920, y: 0, w: 1920, h: 1080 }, mm: { w: 598, h: 336 } },
+      { id: "AUS342B", name: "ASUS 34\" ultrawide", px: { x: 0, y: 0, w: 3440, h: 1440 }, mm: { w: 800, h: 335 } },
+      { id: "GWD1161", name: "Arzopa (painel)", px: { x: 3440, y: 591, w: 1920, h: 1080 }, mm: { w: 357, h: 201 }, panel: true, scale: 1.5 },
+    ] };
+    const start = Date.now() + Number(new URLSearchParams(location.search).get("offset") || 0) * -1000;
+    const gap = layout.gapMm, mons = [...layout.monitors].sort((a, b) => a.px.x - b.px.x);
+    const maxH = Math.max(...mons.map((m) => m.mm.h));
+    let x = 0; for (const m of mons) { m.wx = x; m.wy = (maxH - m.mm.h) / 2; x += m.mm.w + gap; }
+    if (mons.at(-1).panel) mons.at(-1).wy = maxH - mons.at(-1).mm.h; // painel apoiado embaixo, como na mesa
+    const totalW = x - gap, desk = document.getElementById("desk");
+    const fit = Math.min((innerWidth - 120) / totalW, (innerHeight - 160) / maxH);
+    desk.style.transform = `translate(${-totalW * fit / 2}px, ${-maxH * fit / 2 - 10}px)`;
+    for (const m of mons) {
+      const div = document.createElement("div");
+      div.className = "mon";
+      const w = m.mm.w * fit, h = m.mm.h * fit;
+      Object.assign(div.style, { left: m.wx * fit + "px", top: m.wy * fit + "px", width: w + "px", height: h + "px" });
+      const f = document.createElement("iframe");
+      const cssW = m.px.w / (m.scale || 1), cssH = m.px.h / (m.scale || 1);
+      f.width = cssW; f.height = cssH;
+      f.style.transform = `scale(${w / cssW})`;
+      f.src = m.panel ? "../navy/index.html"
+        : `index.html?mon=${m.id}&start=${start}&sub=${encodeURIComponent("faltam 2 dias pras férias")}&layout=${encodeURIComponent(JSON.stringify(layout))}`;
+      div.appendChild(f);
+      const tag = document.createElement("div");
+      tag.className = "tag"; tag.textContent = `${m.name} · ${m.px.w}×${m.px.h}`;
+      div.appendChild(tag);
+      desk.appendChild(div);
+    }
+  </script>
+</body>
+</html>
