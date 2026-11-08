@@ -212,6 +212,23 @@ window.App = (() => {
     if (editing) Editor.refreshBar();
   }
 
+  // Modo jogo: jogo com "page" no deck ("games": [{ "name": "For Honor", "page": "For Honor", ... }]) abre essa página
+  // quando o jogo abre, e volta pra página de antes quando ele fecha.
+  let gameNow = null, pageBeforeGame = null;
+  Bridge.onStatus((s) => {
+    const name = s.game?.name || null;
+    if (name === gameNow || !cfg || editing) return;
+    gameNow = name;
+    const g = name && (cfg.games || []).find((x) => x && x.name === name);
+    if (g && g.page !== undefined) {
+      if (pageBeforeGame === null) pageBeforeGame = current;
+      show(pageIndex(g.page));
+    } else if (!name && pageBeforeGame !== null) {
+      show(pageBeforeGame);
+      pageBeforeGame = null;
+    }
+  });
+
   setInterval(() => { const now = new Date(); mounted.forEach((m) => m.tick?.(now)); }, 1000);
   Bridge.onStatus((s) => mounted.forEach((m) => m.status?.(s)));
 

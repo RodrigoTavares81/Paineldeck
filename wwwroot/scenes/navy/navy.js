@@ -5,6 +5,9 @@
 //   - jogos: seção "games" do deck (capas grandes; "roda" abre a roda de jogos)
 //   - notícias: Bridge.call("news") (o C# busca os feeds de "news" no deck.json)
 //   - dock: deck.navy.dock (lista de botões) ou os botões da 1ª página (menos mic/mídia, que têm lugar próprio)
+//   - modo jogo: status.game (o C# acha o jogo aberto) → FPS/sessão no lugar das férias, "macros" do jogo
+//     no lugar da prateleira e o tempo de jogo da semana (Bridge.call("playtime")) no lugar das notícias
+//   - atualização: status.update (chip no topo; 2 toques → Bridge.call("update"))
 // =====================================================================
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -348,6 +351,181 @@
   }, 15000);
   setInterval(() => loadNews(false), 10 * 60000);
 
+  // ---------- modo jogo ----------
+  const dur = (sec) => {
+    const m = Math.floor((sec || 0) / 60);
+    if (m < 60) return `${m}min`;
+    return `${Math.floor(m / 60)}h${pad(m % 60)}`;
+  };
+  const clock = (sec) => { sec = Math.floor(sec || 0); return `${Math.floor(sec / 3600)}:${pad(Math.floor(sec / 60) % 60)}:${pad(sec % 60)}`; };
+  let deckNow = null, gameName = null, fpsHist = [];
+  const body = document.body;
+
+  function swapIn(...els) { els.forEach((el, k) => { el.style.setProperty("--i", k); el.classList.remove("in"); void el.offsetWidth; el.classList.add("in"); }); }
+  function gameCfg(name) { return (deckNow?.games || []).find((g) => g && g.name === name) || null; }
+
+  function setGame(g) {
+    const name = g ? g.name : null;
+    if (name !== gameName) {
+      gameName = name;
+      fpsHist = [];
+      body.classList.toggle("gaming", !!g);
+      $("#chip-play").hidden = !g;
+      if (g) {
+        $("#g-name").textContent = g.name;
+        const art = g.image || gameCfg(g.name)?.image;
+        $("#g-art").style.backgroundImage = art ? `url("${art}")` : "";
+        renderGameMacros(g);
+        swapIn($("#gamehero"), $("#gmacros"), $("#playtime"));
+        toast(`Modo jogo: ${g.name}`, "ok");
+      } else {
+        swapIn($("#hero"), $(".games"), $(".news"));
+      }
+      loadPlaytime();
+      updateWeekChip();
+    }
+    if (!g) return;
+    $("#chip-play-time").textContent = dur(g.sessionSec);
+    $("#g-session").textContent = clock(g.sessionSec);
+    $("#g-today").textContent = dur(g.todaySec);
+    $("#gamehero").classList.toggle("idle", !!g.idle);
+    const has = g.fps != null;
+    $("#gamehero").classList.toggle("nofps", !has);
+    $("#g-fps").classList.toggle("none", !has);
+    $("#g-fps").classList.toggle("low", has && g.fps < 45);
+    // sem FPS (PresentMon não instalado): o número grande vira o tempo da sessão
+    $("#g-fps-num").textContent = has ? g.fps : `${Math.floor(g.sessionSec / 3600)}:${pad(Math.floor(g.sessionSec / 60) % 60)}`;
+    $("#g-fps .unit").textContent = has ? "FPS" : "SESSÃO";
+    const sub = $("#g-fps-sub");
+    if (has) sub.innerHTML = [g.fpsLow != null ? `1% low <b>${g.fpsLow}</b>` : "", g.fpsAvg != null ? `média <b>${g.fpsAvg}</b>` : ""].filter(Boolean).join(" · ") || "&nbsp;";
+    else { sub.innerHTML = `<span class="hint"></span>`; $(".hint", sub).textContent = g.fpsInfo || "sem leitura de FPS"; }
+    if (has) { fpsHist.push(g.fps); if (fpsHist.length > 60) fpsHist.shift(); }
+    drawSpark();
+  }
+
+  function drawSpark() {
+    const svg = $("#g-spark"), W = 300, H = 70;
+    if (fpsHist.length < 2) { $(".line", svg).setAttribute("d", ""); $(".area", svg).setAttribute("d", ""); $(".head", svg).setAttribute("cx", -10); return; }
+    const max = Math.max(60, ...fpsHist) * 1.08, min = 0;
+    // até ter 1 minuto de leituras, a linha estica pra largura toda
+    const pts = fpsHist.map((v, i) => [(i / (fpsHist.length - 1)) * W, H - ((v - min) / (max - min)) * H]);
+    const off = 0;
+    const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${(x + off).toFixed(1)} ${y.toFixed(1)}`).join(" ");
+    $(".line", svg).setAttribute("d", d);
+    $(".area", svg).setAttribute("d", `${d} L${W} ${H} L${(pts[0][0] + off).toFixed(1)} ${H} Z`);
+    const [hx, hy] = pts[pts.length - 1];
+    $(".head", svg).setAttribute("cx", hx + off);
+    $(".head", svg).setAttribute("cy", hy);
+  }
+
+  // macros do jogo: "macros" do jogo no deck ("games": [{ ..., "macros": [{ icon, label, action }] }]);
+  // sem isso, as macros com nome da seção "macros"
+  function renderGameMacros(g) {
+    const grid = $("#gm-grid");
+    const cfg = gameCfg(g.name);
+    $("#gm-label").textContent = `MACROS · ${g.name.toUpperCase()}`;
+    let items = (cfg?.macros || []).filter((m) => m && m.action);
+    const own = items.length > 0;
+    if (!own) items = Object.keys(deckNow?.macros || {}).map((k) => ({ icon: "🔁", label: k, action: { type: "macro", ref: k } }));
+    grid.innerHTML = "";
+    grid.classList.toggle("few", items.length > 0 && items.length < 4);
+    grid.style.setProperty("--n", Math.max(1, items.length));
+    if (!items.length) {
+      grid.innerHTML = `<div class="gm-empty"><b>Nenhuma macro pra esse jogo</b>
+        <span>No deck.json, ponha <code>"macros": [{ "icon": "💬", "label": "gg", "action": {...} }]</code> no jogo
+        (ou peça pro ✨ Claude).</span></div>`;
+      return;
+    }
+    items.slice(0, 8).forEach((m, k) => {
+      const b = document.createElement("button");
+      b.className = "gm-key";
+      b.style.setProperty("--k", k);
+      if (m.color) b.style.setProperty("--accent", m.color);
+      b.innerHTML = `<span class="ico"></span><span class="lbl"></span>`;
+      $(".ico", b).textContent = m.icon || "•";
+      $(".lbl", b).textContent = m.label || "";
+      b.addEventListener("pointerdown", (e) => run(m.action, b, e, m.label));
+      grid.appendChild(b);
+    });
+  }
+  $("#gm-all").addEventListener("pointerdown", () => run({ type: "macros" }));
+
+  // tempo de jogo da semana
+  let play = null;
+  async function loadPlaytime() {
+    try {
+      play = await Bridge.call("playtime");
+      if (!play) return;
+      renderPlaytime();
+      updateWeekChip();
+    } catch { play = null; $("#chip-week").hidden = true; } // app antigo, sem essa chamada
+  }
+  function renderPlaytime() {
+    const week = play.week || [];
+    const max = Math.max(1800, ...week.map((w) => w.total));
+    $("#pt-total").innerHTML = `7 dias · <b>${dur(play.weekTotal)}</b>`;
+    $("#pt-bars").innerHTML = week.map((w, k) => `
+      <div class="pt-bar${w.today ? " today" : ""}" style="--k:${k}" title="${w.date}">
+        <span class="v">${w.total >= 60 ? dur(w.total) : ""}</span>
+        <i class="col${w.total < 60 ? " zero" : ""}" style="height:${Math.max(3, (w.total / max) * 100)}%"></i>
+        <span class="d">${w.today ? "hoje" : w.label}</span>
+      </div>`).join("");
+    const top = (play.top || []).slice(0, 3);
+    const tmax = Math.max(1, ...top.map((t) => t.sec));
+    const ol = $("#pt-top");
+    ol.innerHTML = "";
+    if (!top.length) { ol.innerHTML = `<li><span class="none">Nenhum jogo nos últimos 7 dias</span></li>`; return; }
+    top.forEach((t, k) => {
+      const li = document.createElement("li");
+      li.className = t.name === gameName ? "on" : "";
+      li.innerHTML = `<span class="n"></span><span class="t">${dur(t.sec)}</span><span class="bar"><i style="width:${(t.sec / tmax) * 100}%;animation-delay:${200 + k * 90}ms"></i></span>`;
+      $(".n", li).textContent = t.name;
+      ol.appendChild(li);
+    });
+  }
+  function updateWeekChip() {
+    const chip = $("#chip-week");
+    chip.hidden = !play || !!gameName;
+    if (play) $("#chip-week-time").textContent = dur(play.today?.total || 0);
+  }
+  let ptTimer = 0;
+  $("#chip-week").addEventListener("pointerdown", () => {
+    const on = !body.classList.contains("show-playtime");
+    body.classList.toggle("show-playtime", on);
+    swapIn(on ? $("#playtime") : $(".news"));
+    clearTimeout(ptTimer);
+    if (on) { loadPlaytime(); ptTimer = setTimeout(() => { body.classList.remove("show-playtime"); swapIn($(".news")); }, 30000); }
+  });
+  setInterval(() => { if (gameName || body.classList.contains("show-playtime") || !play) loadPlaytime(); else updateWeekChip(); }, 60000);
+
+  // ---------- atualização ----------
+  let upd = null, askUntil = 0, doneSeen = false;
+  const chipUp = $("#chip-update");
+  function setUpdate(u) {
+    upd = u || null;
+    const st = upd?.state;
+    const show = st === "available" || st === "working" || st === "error" || (st === "done" && !doneSeen);
+    chipUp.hidden = !show;
+    if (!show) return;
+    const asking = st === "available" && Date.now() < askUntil;
+    chipUp.className = `chip action update ${st}${asking ? " ask" : ""}`;
+    const text = st === "available" ? (asking ? "Toque de novo pra atualizar" : `Atualizar · ${upd.latest || "nova versão"}`)
+      : st === "working" ? (upd.message || "Atualizando…")
+      : st === "done" ? (upd.message || "Atualizado") : (upd.message || "Erro ao atualizar");
+    $("#chip-update-text").textContent = text;
+    chipUp.title = st === "available" && upd.title ? `Novidade: ${upd.title}` : text;
+  }
+  chipUp.addEventListener("pointerdown", async () => {
+    const st = upd?.state;
+    if (st === "done") { doneSeen = true; setUpdate(upd); return; }
+    if (st === "error") { Bridge.call("update", { check: true }).catch(() => {}); return; }
+    if (st !== "available") return;
+    if (Date.now() > askUntil) { askUntil = Date.now() + 4000; setUpdate(upd); setTimeout(() => setUpdate(upd), 4100); return; }
+    askUntil = 0;
+    try { setUpdate(await Bridge.call("update")); }
+    catch (err) { toast(`Atualizar: ${err.message}`); }
+  });
+
   // ---------- dados ----------
   function findFerias(deck) {
     if (deck.navy?.ferias) return deck.navy.ferias;
@@ -356,6 +534,8 @@
   }
   function applyDeck(deck) {
     if (!deck) return;
+    deckNow = deck;
+    if (gameName) renderGameMacros({ name: gameName });
     const f = findFerias(deck);
     ferias = f ? { inicio: D.parse(f.inicio), volta: D.parse(f.volta) } : null;
     $("#hero").style.display = ferias ? "" : "none";
@@ -373,9 +553,12 @@
     }
     updateGauges(s);
     updateMic(s);
+    setGame(s.game || null);
+    setUpdate(s.update);
   });
 
   loadNews(false);
+  loadPlaytime();
 
   const loop = () => { const now = new Date(); tickClock(now); tickHero(now); };
   loop();

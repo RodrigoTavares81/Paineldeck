@@ -164,3 +164,38 @@ defineWidget("stat", {
     };
   },
 });
+
+// ---------- 🎮 Modo jogo: jogo aberto, FPS e tempo da sessão ----------
+// { "widget": "jogo" } — o C# acha o jogo sozinho (veja "gameMode" no deck.json); sem jogo, mostra "nenhum jogo".
+defineWidget("jogo", {
+  mount(el) {
+    el.classList.add("w-jogo");
+    el.innerHTML = `<div class="art"></div>
+      <div class="content">
+        <div class="kicker"><i class="rec"></i><span class="k">nenhum jogo aberto</span></div>
+        <div class="name">🎮</div>
+        <div class="fps"><span class="num">--</span><span class="unit">FPS</span></div>
+        <div class="sub"></div>
+      </div>`;
+    const $ = (s) => el.querySelector(s);
+    const dur = (sec) => { const m = Math.floor((sec || 0) / 60); return m < 60 ? `${m}min` : `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`; };
+    let last = null;
+    return {
+      status(s) {
+        const g = s.game;
+        el.dataset.on = g ? "1" : "";
+        if (!g) { if (last !== null) { $(".k").textContent = "nenhum jogo aberto"; $(".name").textContent = "🎮"; $(".art").style.backgroundImage = ""; last = null; } return; }
+        if (g.name !== last) {
+          last = g.name;
+          $(".name").textContent = g.name;
+          $(".art").style.backgroundImage = g.image ? `url("${g.image}")` : "";
+          pop($(".name"));
+        }
+        $(".k").textContent = g.idle ? "pausado" : `jogando · ${dur(g.sessionSec)}`;
+        $(".num").textContent = g.fps ?? "—";
+        el.classList.toggle("low", g.fps != null && g.fps < 45);
+        $(".sub").textContent = g.fps != null ? [g.fpsLow != null && `1% low ${g.fpsLow}`, `hoje ${dur(g.todaySec)}`].filter(Boolean).join(" · ") : (g.fpsInfo || `hoje ${dur(g.todaySec)}`);
+      },
+    };
+  },
+});

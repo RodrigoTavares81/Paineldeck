@@ -11,3 +11,10 @@ deck.backup*.json
 # capas dos jogos: arte oficial dos jogos, fica só no PC (veja wwwroot/games/README.md)
 wwwroot/games/*
 !wwwroot/games/README.md
+
+# dados e ferramentas que ficam só no PC
+playtime.json*
+version.json
+.atualizacao/
+logs/
+tools/

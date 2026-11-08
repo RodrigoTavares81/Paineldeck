@@ -35,6 +35,18 @@
 //  "games": lista da roda de jogos → { "name": "...", "image": "games/arquivo.jpg", "action": {...} }
 //  (imagens na pasta wwwroot/games)
 //
+//  MODO JOGO: o app percebe sozinho quando um jogo abre (pela pasta da Steam/Ubisoft/Epic/Xbox ou pelo .exe)
+//  e troca o painel pra tela do jogo: FPS, tempo da sessão, macros do jogo e o tempo de jogo da semana.
+//  Campos opcionais em cada jogo de "games":
+//   "process": "ForHonor.exe"                     reconhece pelo nome do .exe (ou lista ["a.exe", "b.exe"])
+//   "macros": [ { "icon": "💬", "label": "gg", "action": {...} } ]   botões na tela do jogo (até 8)
+//   "page": "For Honor"                           no clássico: página que abre junto com o jogo
+//   "onStart" / "onStop": ação (ou lista)         roda quando o jogo abre / fecha
+//  "gameMode": { "enabled": true, "detectUnknown": true, "idleMinutes": 10, "ignore": ["programa.exe"],
+//                "libraries": ["D:\\Jogos"], "onStart": [...], "onStop": [...] }
+//   detectUnknown = jogo fora da lista também conta (com o nome da pasta); idleMinutes = parado esse tempo não conta;
+//   libraries = outras pastas onde ficam jogos. FPS: rode scripts/ativar-fps.ps1 uma vez (baixa o PresentMon).
+//
 //  "news": notícias da cena Navy (opcional) → { "title": "IA", "feeds": ["https://...rss"], "max": 8, "refreshMinutes": 20 }
 //  (RSS ou Atom; sem essa seção usa o Google News sobre IA em português)
 // =====================================================================
@@ -142,8 +154,18 @@
       "name": "Principal"
     }
     ],
+  "gameMode": {
+    "enabled": true,
+    "detectUnknown": true,
+    "idleMinutes": 10,
+    "ignore": []
+  },
   "games": [
-    { "name": "For Honor", "image": "games/for-honor.jpg", "action": { "type": "url", "url": "uplay://launch/569/0" } },
+    { "name": "For Honor", "image": "games/for-honor.jpg", "action": { "type": "url", "url": "uplay://launch/569/0" },
+      "macros": [
+        { "icon": "💬", "label": "gg wp", "action": { "type": "macro", "ref": "gg" } },
+        { "icon": "🎧", "label": "Discord mute", "action": { "type": "keys", "keys": "ctrl+shift+m" }, "color": "#5865f2" }
+      ] },
     { "name": "ARC Raiders", "image": "games/arc-raiders.jpg", "action": { "type": "url", "url": "steam://rungameid/1808500" } },
     { "name": "Rematch", "image": "games/rematch.png", "action": { "type": "run", "path": "explorer.exe", "args": "shell:AppsFolder\\SLOCLAP.ProjectRuntime_cse8z5zpmcvkt!AppRematchShipping" } }
   ]
