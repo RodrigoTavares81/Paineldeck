@@ -6,6 +6,8 @@
 //   - Bridge.call("claudeSessions") → { items: [{ id, title, project, branch, updated, state, last, lastRole, recent, sending, error }], error }
 //     state: "working" (trabalhando) | "waiting" (respondeu, sua vez) | "idle" (parada no meio)
 //   - Bridge.call("claudeSend", { id, text })
+//   - "+ Nova": Bridge.call("claudeNew", { cwd, text }) → { id } abre uma sessão nova na pasta escolhida
+//     (pastas = "folders" da resposta de claudeSessions: as do deck.json "claude.folders" + as das sessões recentes)
 //   - Bridge.call("voice", { cmd: "start" | "state" | "stop" | "cancel" }) → stop devolve { text }
 //  Leve na GPU: nada de animação infinita; a bolinha "trabalhando" pisca pelo body.blink (1x por segundo).
 // =====================================================================
@@ -16,7 +18,9 @@
   const list = $("#ses-list"), detail = $("#ses-detail"), compose = $("#sd-compose"), chat = $("#sd-chat");
   const card = $("#sessions");
 
-  let items = [], openId = null, lastErr = null;
+  let items = [], openId = null, lastErr = null, folders = [];
+  const NEW = "__nova__";
+  let newCwd = (() => { try { return localStorage.getItem("navy.claude.pasta") || ""; } catch { return ""; } })();
   let mode = "idle"; // compose: idle | rec | wait | review | type | sent
   let draftText = "", recTimer = null, recStart = 0;
 
@@ -36,12 +40,15 @@
     return d === 1 ? "ontem" : `${d} dias`;
   }
   const oneLine = (s) => String(s || "").replace(/\s+/g, " ").trim();
-  const current = () => items.find((x) => x.id === openId) || null;
+  const folderName = (p) => String(p || "").split(/[\\/]/).filter(Boolean).pop() || p;
+  const current = () => openId === NEW
+    ? { id: NEW, title: "Nova sessão", project: folderName(newCwd), state: "idle", cwd: newCwd }
+    : items.find((x) => x.id === openId) || null;
 
   // ---------- lista ----------
   function renderList() {
     const w = items.filter((x) => x.state === "working").length;
-    $("#ses-count").innerHTML = !items.length ? "" : w ? `<b>${w} trabalhando</b> · ${items.length}` : `${items.length} ${items.length === 1 ? "sessão" : "sessões"}`;
+    $("#ses-count").innerHTML = !items.length ? "" : w ? `<b>${w} ${w === 1 ? "ativa" : "ativas"}</b>` : `${items.length}`;
     if (!items.length) {
       list.innerHTML = `<li class="msg"><b></b><span></span></li>`;
       $(".msg b", list).textContent = lastErr ? "Sessões desligadas" : "Nenhuma sessão recente";
@@ -93,7 +100,7 @@
     cancelVoice();
     leaveTyping();
     openId = null;
-    card.classList.remove("open");
+    card.classList.remove("open", "new");
     detail.hidden = true;
     setMode("idle");
   }
@@ -101,6 +108,8 @@
 
   let chatKey = "";
   function renderDetail(scroll) {
+    if (openId === NEW) return renderNew();
+    card.classList.remove("new");
     const it = current();
     if (!it) { if (openId) closeSession(); return; }
     $("#sd-title").textContent = it.title;
@@ -118,6 +127,30 @@
     if (scroll) chat.scrollTop = chat.scrollHeight;
     if (mode === "sent" && it.state !== "working") setMode("idle");
     else if (mode === "idle") renderCompose();
+  }
+
+  // ---------- sessão nova: escolhe a pasta e fala ----------
+  $("#ses-new").addEventListener("pointerdown", (e) => { ripple(e.currentTarget, e); openSession(NEW); });
+  function renderNew() {
+    card.classList.add("new");
+    if (!folders.some((f) => f.path === newCwd)) newCwd = folders[0]?.path || "";
+    $("#sd-title").textContent = "Nova sessão";
+    $("#sd-meta").innerHTML = `<span>${newCwd ? esc(newCwd) : "escolha a pasta"}</span>`;
+    const key = JSON.stringify(["new", folders, newCwd]);
+    if (key === chatKey) return;
+    chatKey = key;
+    chat.innerHTML = `<div class="nw-hint">Em qual pasta? O Claude Code abre uma sessão nova lá, em segundo plano, e ela aparece na lista.</div>
+      <div class="nw-folders">${folders.map((f) => `<button class="fold${f.path === newCwd ? " on" : ""}" data-path="${esc(f.path)}" title="${esc(f.path)}"><b>${esc(f.name)}</b><span>${esc(f.path)}</span></button>`).join("")
+        || `<div class="nw-hint">Nenhuma pasta ainda. Ponha em "claude": { "folders": [...] } no deck.json.</div>`}</div>`;
+    chat.querySelectorAll(".fold").forEach((b) => b.addEventListener("pointerdown", () => {
+      newCwd = b.dataset.path;
+      try { localStorage.setItem("navy.claude.pasta", newCwd); } catch { /* ok */ }
+      renderNew();
+      if (mode === "type") $("textarea", compose)?.focus();
+    }));
+    const on = $(".fold.on", chat);
+    if (on) on.scrollIntoView({ block: "nearest" });
+    if (mode === "idle") renderCompose();
   }
 
   // ---------- compor (voz / digitar) ----------
@@ -222,6 +255,7 @@
     const it = current();
     if (!text || !it) return;
     leaveTyping();
+    if (it.id === NEW) return sendNew(text);
     try {
       await Bridge.call("claudeSend", { id: it.id, text });
       draftText = "";
@@ -237,6 +271,23 @@
     }
   }
 
+  async function sendNew(text) {
+    if (!newCwd) return toast("Escolha a pasta primeiro.");
+    try {
+      const r = await Bridge.call("claudeNew", { cwd: newCwd, text });
+      draftText = "";
+      toast(`Abri uma sessão nova em ${folderName(newCwd)} ✓`, "ok");
+      await load();
+      if (r?.id) openSession(r.id); else closeSession();
+      setMode("sent");
+      poll(1500);
+    } catch (err) {
+      toast(/desconhecid/i.test(err.message) ? "Reinicie o PainelDeck pra abrir sessão nova." : `Não abri: ${err.message}`);
+      draftText = text;
+      setMode(mode === "type" ? "type" : "review");
+    }
+  }
+
   // ---------- atualização ----------
   let pollT = null;
   async function load() {
@@ -245,6 +296,7 @@
       if (!r && Bridge.preview) r = PREVIEW();
       if (!r) throw new Error("sem resposta");
       items = r.items || [];
+      folders = r.folders || folders;
       lastErr = r.error || null;
     } catch (err) {
       if (!items.length) lastErr = /desconhecid|unknown/i.test(err.message) ? "Reinicie o PainelDeck pra ligar as sessões." : `Não consegui ler: ${err.message}`;
@@ -278,7 +330,9 @@
       { id: "d4", title: "Migrar API pro .NET 9", project: "api-core", branch: "main", updated: t(60 * 5), state: "idle", lastRole: "user", last: "continua de onde parou" },
       { id: "e5", title: "Ideias de widget de clima", project: "PainelDeck", updated: t(60 * 26), state: "waiting", lastRole: "assistant", last: "Dá pra usar o open-meteo sem chave: temperatura, chuva e ícone animado." },
     ];
-    return { items: pv, error: null };
+    return { items: pv, error: null, folders: [
+      { path: "C:\\Users\\rodri\\PainelDeck", name: "PainelDeck" }, { path: "C:\\Users\\rodri\\Projetos\\dreamlabs-web", name: "dreamlabs-web" },
+      { path: "C:\\Users\\rodri\\scripts", name: "scripts" }, { path: "C:\\Users\\rodri", name: "rodri" }] };
   }
   if (Bridge.preview) {
     const real = Bridge.call;
@@ -291,6 +345,12 @@
         if (args.cmd === "state") return { recording: rec, level: rec ? Math.random() * 0.4 : 0 };
         if (args.cmd === "stop") { rec = false; await new Promise((r) => setTimeout(r, 900)); return { text: "Pode abrir o PR, e depois roda os testes de novo no Safari." }; }
         return { recording: rec };
+      }
+      if (method === "claudeNew") {
+        const id = "n" + Date.now();
+        pv.unshift({ id, title: args.text, project: folderName(args.cwd), updated: new Date().toISOString(), state: "working", sending: args.text, lastRole: "user", last: args.text, recent: [{ role: "user", text: args.text }] });
+        setTimeout(() => { const it = pv.find((x) => x.id === id); it.state = "waiting"; it.sending = null; it.recent.push({ role: "assistant", text: "Respondendo pela sessão nova (preview)." }); it.last = "Respondendo pela sessão nova (preview)."; it.lastRole = "assistant"; }, 4000);
+        return { started: true, id };
       }
       if (method === "claudeSend") {
         const it = pv.find((x) => x.id === args.id);

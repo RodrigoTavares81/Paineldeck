@@ -296,6 +296,12 @@ public sealed class PanelForm : Form
                     Post(new { type = "result", id, ok = true, result = r });
                     return;
                 }
+                if (method == "claudeNew") // { cwd, text }: sessão nova do Claude Code nessa pasta, em segundo plano
+                {
+                    var r = sessions.Start(deck.Snapshot(), args.GetProperty("cwd").GetString() ?? "", args.GetProperty("text").GetString() ?? "");
+                    Post(new { type = "result", id, ok = true, result = r });
+                    return;
+                }
                 if (method == "voice") // { cmd: "start" | "stop" | "cancel" | "state" }: grava o microfone e vira texto
                 {
                     var cmd = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("cmd", out var c) ? c.GetString() : "state";

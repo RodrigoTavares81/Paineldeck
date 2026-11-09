@@ -10,7 +10,9 @@ namespace PainelDeck;
 /// Sessões do Claude Code deste PC (as conversas ficam em %USERPROFILE%\.claude\projects\&lt;pasta&gt;\&lt;id&gt;.jsonl).
 /// Lista as que mexeram nas últimas horas, com título, projeto, última mensagem e estado,
 /// e manda mensagem nova pra uma delas com `claude --resume &lt;id&gt; -p` em segundo plano (nenhuma janela abre).
-/// Config opcional no deck.json: "claude": { "hours": 72, "max": 14, "permissionMode": "acceptEdits", "allowedTools": "" }.
+/// Também abre sessão NOVA numa pasta (`claude --session-id &lt;novo&gt; -p`).
+/// Config opcional no deck.json: "claude": { "hours": 72, "max": 14, "permissionMode": "acceptEdits", "allowedTools": "",
+/// "folders": ["C:\\Users\\rodri\\Projetos\\x"], "defaultFolder": "..." } (pastas pra sessão nova; as das sessões recentes entram sozinhas).
 /// As conversas do claude.ai (app/web) não têm API pública: aqui só aparecem as do Claude Code no PC.
 /// </summary>
 internal sealed partial class ClaudeSessions
@@ -22,6 +24,8 @@ internal sealed partial class ClaudeSessions
     {
         public DateTimeOffset Started = DateTimeOffset.Now;
         public string Text = "";
+        public string Cwd = "";
+        public bool New; // sessão nova: ainda pode não ter o .jsonl
     }
 
     private readonly string root; // pasta do PainelDeck: esconde as sessões do "✨ Pedir ao Claude"
@@ -32,7 +36,7 @@ internal sealed partial class ClaudeSessions
 
     public ClaudeSessions(string root) => this.root = root;
 
-    private sealed record Config(int Hours, int Max, string PermissionMode, string AllowedTools);
+    private sealed record Config(int Hours, int Max, string PermissionMode, string AllowedTools, string[] Folders, string? DefaultFolder);
 
     private static Config ReadConfig(JsonNode deck)
     {
@@ -43,7 +47,11 @@ internal sealed partial class ClaudeSessions
         if (mode is not ("default" or "acceptEdits" or "plan" or "bypassPermissions")) mode = "acceptEdits";
         var tools = Str("allowedTools", "");
         if (!SafeTools().IsMatch(tools)) tools = "";
-        return new Config(Int("hours", 72, 1, 24 * 30), Int("max", 14, 1, 40), mode, tools);
+        var folders = (n?["folders"] as JsonArray)?.Select(f => f is JsonValue fv && fv.TryGetValue<string>(out var fs) ? Environment.ExpandEnvironmentVariables(fs) : null)
+            .Where(f => !string.IsNullOrWhiteSpace(f)).Select(f => f!).ToArray() ?? Array.Empty<string>();
+        var def = Str("defaultFolder", "");
+        return new Config(Int("hours", 72, 1, 24 * 30), Int("max", 14, 1, 40), mode, tools, folders,
+            def == "" ? null : Environment.ExpandEnvironmentVariables(def));
     }
 
     [GeneratedRegex(@"^[A-Za-z0-9_,:() *.\-]*$")] private static partial Regex SafeTools();
@@ -123,7 +131,33 @@ internal sealed partial class ClaudeSessions
             };
         }
 
-        return new { items = list.Select(x => Item(x.P, x.M)).ToArray(), error = (string?)null };
+        // sessões novas que ainda não escreveram o .jsonl (o Claude leva uns segundos pra começar)
+        var shown = list.Select(x => x.P.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        List<object> pending;
+        lock (gate)
+            pending = running.Where(kv => kv.Value.New && !shown.Contains(kv.Key)).Select(kv => (object)new
+            {
+                id = kv.Key,
+                title = Clean(kv.Value.Text, 90),
+                project = ProjectName(kv.Value.Cwd),
+                cwd = kv.Value.Cwd,
+                branch = (string?)null,
+                updated = kv.Value.Started.ToString("o"),
+                state = "working",
+                lastRole = "user",
+                last = kv.Value.Text,
+                recent = new List<object> { new { role = "user", text = kv.Value.Text } },
+                sending = kv.Value.Text,
+                sendingSince = kv.Value.Started.ToString("o"),
+                error = (string?)null,
+            }).ToList();
+
+        return new
+        {
+            items = pending.Concat(list.Select(x => Item(x.P, x.M))).ToArray(),
+            folders = Folders(cfg),
+            error = (string?)null,
+        };
     }
 
     /// <summary>Esconde as sessões que o próprio painel abre no "✨ Pedir ao Claude".</summary>
@@ -309,11 +343,72 @@ internal sealed partial class ClaudeSessions
         {
             if (running.ContainsKey(id!)) throw new InvalidOperationException("Essa sessão ainda está respondendo a última mensagem.");
             if (running.Count >= 4) throw new InvalidOperationException("Já tem 4 mensagens rodando. Espera uma terminar.");
-            running[id!] = new Run { Text = Clean(text, 300) };
+            running[id!] = new Run { Text = Clean(text, 300), Cwd = cwd };
             errors.Remove(id!);
         }
-        _ = Task.Run(() => RunClaudeAsync(cfg, id!, cwd, text));
+        _ = Task.Run(() => RunClaudeAsync(cfg, id!, cwd, text, isNew: false));
         return new { started = true };
+    }
+
+    /// <summary>Sessão nova na pasta escolhida. Devolve o id (já aparece na lista como "trabalhando").</summary>
+    public object Start(JsonNode deck, string cwd, string text)
+    {
+        text = (text ?? "").Trim();
+        if (text == "") throw new ArgumentException("Mensagem vazia.");
+        cwd = (cwd ?? "").Trim();
+        if (cwd == "" || !Path.IsPathRooted(cwd) || !Directory.Exists(cwd)) throw new DirectoryNotFoundException("Essa pasta não existe: " + cwd);
+        var cfg = ReadConfig(deck);
+        var id = Guid.NewGuid().ToString();
+        lock (gate)
+        {
+            if (running.Count >= 4) throw new InvalidOperationException("Já tem 4 mensagens rodando. Espera uma terminar.");
+            running[id] = new Run { Text = Clean(text, 300), Cwd = cwd, New = true };
+        }
+        _ = Task.Run(() => RunClaudeAsync(cfg, id, cwd, text, isNew: true));
+        return new { started = true, id };
+    }
+
+    /// <summary>Pastas pra sessão nova: as do deck.json, as das sessões dos últimos 30 dias (mais recentes primeiro) e a pasta do usuário.</summary>
+    private List<object> Folders(Config cfg)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var outp = new List<object>();
+        void Add(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            path = path.TrimEnd('\\', '/');
+            if (path.Length < 2 || !seen.Add(path) || !Directory.Exists(path)) return;
+            outp.Add(new { path, name = ProjectName(path) });
+        }
+        Add(cfg.DefaultFolder);
+        foreach (var f in cfg.Folders) Add(f);
+        var since = DateTime.Now - TimeSpan.FromDays(30);
+        var recent = new List<(DateTime M, string Cwd)>();
+        foreach (var proj in SafeDirs(ProjectsDir()))
+        {
+            var newest = SafeFiles(proj).Where(f => f.LastWriteTime >= since).OrderByDescending(f => f.LastWriteTime).FirstOrDefault();
+            if (newest == null) continue;
+            string cwd;
+            lock (gate) cwd = cache.TryGetValue(newest.FullName, out var p) ? p.Cwd : "";
+            if (cwd == "") cwd = CwdOf(newest.FullName);
+            if (cwd != "") recent.Add((newest.LastWriteTime, cwd));
+        }
+        foreach (var r in recent.OrderByDescending(r => r.M)) Add(r.Cwd);
+        Add(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        return outp.Take(12).ToList();
+    }
+
+    /// <summary>Só a pasta (cwd) de uma sessão: lê as primeiras linhas.</summary>
+    private static string CwdOf(string file)
+    {
+        try
+        {
+            using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            foreach (var line in ReadLines(fs, 0, (int)Math.Min(fs.Length, 64 * 1024), dropFirst: false))
+                if (TryParse(line) is { } o && Str(o, "cwd") is { Length: > 0 } c) return c;
+        }
+        catch { }
+        return "";
     }
 
     private static string? FindFile(string id)
@@ -326,11 +421,11 @@ internal sealed partial class ClaudeSessions
         return null;
     }
 
-    private async Task RunClaudeAsync(Config cfg, string id, string cwd, string text)
+    private async Task RunClaudeAsync(Config cfg, string id, string cwd, string text, bool isNew)
     {
         try
         {
-            var args = $"claude --resume {id} -p --output-format text --permission-mode {cfg.PermissionMode}";
+            var args = $"claude {(isNew ? "--session-id" : "--resume")} {id} -p --output-format text --permission-mode {cfg.PermissionMode}";
             if (cfg.AllowedTools != "") args += $" --allowedTools \"{cfg.AllowedTools}\"";
             var psi = new ProcessStartInfo("cmd.exe", $"/d /s /c \"{args}\"")
             {
