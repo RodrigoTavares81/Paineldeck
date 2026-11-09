@@ -36,7 +36,9 @@ Quando um pedido chega pelo botão "✨ Pedir ao Claude", o painel está rodando
      Se o Rodrigo pedir mudança "no painel" e a cena for Navy, mexa em `scenes/navy/` (`navy.css`/`navy.js`).
      O `status` da Navy também traz `gpuName` e `media` = `{ title, artist, art, position, duration, playing }` (ou `null`).
      `status.sys` = `{ uptimeSec, cpuTemp, cpuTempSrc, net: { down, up }, disk: { read, write, busy }, drives: [{ name, label, freeGb, totalGb }] }`
-     (rede/disco em bytes/s; `cpuTemp` vem do LibreHardwareMonitor aberto ou da zona térmica do Windows (`cpuTempSrc: "acpi"`, aproximado), ou `null`).
+     (rede/disco em bytes/s; `cpuTemp` vem do ajudante de sensores `Sensors.cs` (`cpuTempSrc: "ajudante"`, instalado por `scripts/instalar-sensores.ps1`),
+     do LibreHardwareMonitor aberto ou da zona térmica do Windows (`"acpi"`, aproximado), ou `null` com `cpuTempHint` dizendo o que falta;
+     com o ajudante vêm também `cpuPower` (W) e `cpuClockMhz`).
    - **Leve na GPU (importante):** na Navy, nada de animação CSS `infinite`, `backdrop-filter` ou `filter: blur` animado: qualquer
      coisa que nunca para faz o WebView desenhar 60 quadros/s pra sempre. Movimento contínuo vai no loop `fx()` do `navy.js`
      (poucos quadros/s, `deck.navy.animacao`, padrão 10; 0 = parado). Animação de entrada/clique que termina pode.

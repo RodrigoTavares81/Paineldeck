@@ -19,7 +19,9 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
     <!-- só pra ler a temperatura da CPU do LibreHardwareMonitor (WMI), quando ele estiver aberto -->
-    <PackageReference Include="System.Management" Version="8.0.0" />
+    <PackageReference Include="System.Management" Version="10.0.2" />
+    <!-- temperatura de verdade da CPU no ajudante de sensores (precisa de admin + driver PawnIO: scripts\instalar-sensores.ps1) -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
   </ItemGroup>
 
   <ItemGroup>
