@@ -3,7 +3,8 @@
 //  Lê o status do PC (Bridge.onStatus) e o deck (Bridge.onDeck):
 //   - férias: pega o widget "ferias" do deck (inicio/volta) ou deck.navy.ferias
 //   - jogos: seção "games" do deck (capas grandes; "roda" abre a roda de jogos)
-//   - notícias: Bridge.call("news") (o C# busca os feeds de "news" no deck.json)
+//   - coluna da direita: sessões do Claude Code (sessions.js) ou, com "navy": { "coluna": "noticias" },
+//     notícias por Bridge.call("news") (o C# busca os feeds de "news" no deck.json)
 //   - telemetria: CPU/GPU (com temperatura), RAM, VRAM + dados do PC (status.sys: tempo ligado, rede, disco, espaço)
 //   - modo jogo: status.game (o C# acha o jogo aberto) → FPS/sessão/temperaturas no lugar das férias
 //     e o selo JOGANDO na capa do jogo
@@ -387,7 +388,15 @@
     stamp();
     if (!newsHover && pages() > 1) { page = (page + 1) % pages(); renderPage(true); }
   }, 25000);
-  setInterval(() => loadNews(false), 10 * 60000);
+  setInterval(() => { if (newsOn()) loadNews(false); }, 10 * 60000);
+  // a coluna da direita é das sessões do Claude, a não ser que o deck peça as notícias
+  const newsOn = () => /^not/i.test(String(deckNow?.navy?.coluna || ""));
+  let newsLoaded = false;
+  function applyColumn() {
+    const on = newsOn();
+    body.classList.toggle("col-news", on);
+    if (on && !newsLoaded) { newsLoaded = true; loadNews(false); }
+  }
 
   // ---------- modo jogo ----------
   const dur = (sec) => {
@@ -498,6 +507,7 @@
     $("#hero").style.display = ferias ? "" : "none";
     renderGames(deck);
     tickHero(new Date());
+    applyColumn();
   }
 
   Bridge.onDeck((deck, error) => { if (error && !/Preview/.test(error)) toast(error); applyDeck(deck); });
@@ -514,7 +524,7 @@
     setUpdate(s.update);
   });
 
-  loadNews(false);
+  window.Navy = { toast, ripple }; // usado pelo sessions.js (coluna das sessões do Claude)
 
   const loop = () => {
     const now = new Date();

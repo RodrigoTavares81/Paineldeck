@@ -107,7 +107,26 @@
       <div class="shelf" id="shelf"></div>
     </section>
 
-    <!-- ===== notícias de IA (C# busca o RSS, Bridge.call("news")) ===== -->
+    <!-- ===== sessões do Claude Code do PC (C#: Bridge.call("claudeSessions"); sessions.js) ===== -->
+    <section class="card sessions card-in" style="--i:3" id="sessions">
+      <div class="card-head">
+        <span class="label">CLAUDE · SESSÕES</span>
+        <span class="ses-side"><span class="ses-count" id="ses-count"></span></span>
+      </div>
+      <div class="ses-wrap">
+        <ol class="ses-list" id="ses-list"></ol>
+        <div class="ses-detail" id="ses-detail" hidden>
+          <div class="sd-head">
+            <button class="sd-back" id="sd-back" title="Voltar pra lista"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12Z"/></svg></button>
+            <div class="sd-name"><div class="sd-title" id="sd-title"></div><div class="sd-meta" id="sd-meta"></div></div>
+          </div>
+          <div class="sd-chat" id="sd-chat"></div>
+          <div class="sd-compose" id="sd-compose"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== notícias de IA (só com "navy": { "coluna": "noticias" }; C# busca o RSS, Bridge.call("news")) ===== -->
     <section class="card news card-in" style="--i:3">
       <div class="card-head">
         <span class="label" id="news-label">IA · NOTÍCIAS</span>
@@ -164,5 +183,6 @@
   <script src="app.js"></script>
   <script src="editor.js"></script>
   <script src="scenes/navy/navy.js"></script>
+  <script src="scenes/navy/sessions.js"></script>
 </body>
 </html>
