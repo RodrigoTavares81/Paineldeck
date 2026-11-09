@@ -80,8 +80,9 @@ internal sealed class SysInfo : IDisposable
     }
 
     // ---------- temperatura da CPU ----------
-    // 1º LibreHardwareMonitor/OpenHardwareMonitor abertos (sensor de verdade, via WMI);
-    // 2º zona térmica do ACPI (aproximado). Sem nenhum: null.
+    // 1º o ajudante de sensores do PainelDeck (Sensors.cs, instalado por scripts\instalar-sensores.ps1);
+    // 2º LibreHardwareMonitor/OpenHardwareMonitor abertos (sensor de verdade, via WMI);
+    // 3º zona térmica do ACPI (aproximado). Sem nenhum: null.
     private double? lhmTemp;
     private string? lhmSrc;
     private int lhmBusy;
@@ -89,6 +90,8 @@ internal sealed class SysInfo : IDisposable
 
     private (double temp, string src)? CpuTemp()
     {
+        if (Sensors.Read() is { Temp: double ht }) return (Math.Round(ht), "ajudante");
+
         if (Environment.TickCount64 >= lhmNext && Interlocked.Exchange(ref lhmBusy, 1) == 0)
         {
             Task.Run(() =>
@@ -154,6 +157,10 @@ internal sealed class SysInfo : IDisposable
             uptimeSec = UptimeSec,
             cpuTemp = temp?.temp,
             cpuTempSrc = temp?.src,
+            // sem temperatura: por quê (o painel mostra a dica)
+            cpuTempHint = temp != null ? null : Sensors.Read() is { Error: { } err } ? err : "rode scripts\\instalar-sensores.ps1",
+            cpuPower = Sensors.Read()?.Power,
+            cpuClockMhz = Sensors.Read()?.ClockMhz,
             net = net is { } n ? new { down = Math.Round(n.down), up = Math.Round(n.up) } : null,
             disk = read != null || write != null
                 ? new { read = Math.Round(read ?? 0), write = Math.Round(write ?? 0), busy = idle is double i ? Math.Round(Math.Clamp(100 - i, 0, 100)) : (double?)null }

@@ -74,8 +74,13 @@ das férias, capas dos jogos, notícias de IA, telemetria com temperatura da CPU
 A escolha fica no `settings.json` (`"panelScene": "classic" | "navy"`, padrão `"classic"`). Na Navy, **roda** e
 **Pedir ao Claude** abrem a mesma roda e caixa do clássico. A Navy é feita pra quase não usar a GPU parada (nada de
 animação CSS infinita nem blur animado; o mar das férias anda a 10 quadros/s, `"navy": { "animacao": 0 }` deixa parado).
-**Temperatura da CPU:** o Windows não dá a do sensor sem admin. Com o [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
-aberto, o painel lê dele (sensor de verdade); sem ele, usa a zona térmica do Windows (marcado APROX), quando a placa-mãe tiver. Arquivos: `wwwroot/scenes/navy/`.
+**Temperatura da CPU:** o Windows só dá o sensor de verdade com admin + driver. Rode **`scripts\instalar-sensores.ps1`** uma vez
+(clique direito → Executar com o PowerShell; pede admin uma vez): instala o driver PawnIO pelo winget, copia o app pra
+`%ProgramData%\PainelDeck\Sensores\app` e cria a tarefa agendada **PainelDeck Sensores**, que abre no logon como admin, sem janela,
+e grava a temperatura (com a [LibreHardwareMonitorLib](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)) em
+`sensores.json` a cada 2s. O painel só lê o arquivo, então não precisa rodar como admin. Sem o ajudante, o painel ainda tenta o
+LibreHardwareMonitor aberto e a zona térmica do Windows (APROX). Remover: `instalar-sensores.ps1 -Remover`.
+Se uma atualização mexer no ajudante (`Sensors.cs`), rode o script de novo pra atualizar a cópia. Arquivos: `wwwroot/scenes/navy/`.
 Preview: `python -m http.server` na pasta `PainelDeck` e abrir `http://localhost:8000/wwwroot/scenes/navy/`.
 
 ## 🌙 Modo descanso

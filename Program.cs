@@ -5,6 +5,9 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        // ajudante de sensores (rodando como admin pela tarefa agendada): veja Sensors.cs
+        if (args.Contains("--sensors")) { Sensors.Run(); return; }
+
         Crash.WaitForPrevious(args); // reiniciando (crash, atualização, bandeja): espera a instância antiga sair
 
         using var mutex = new Mutex(true, "PainelDeck.SingleInstance", out bool first);

@@ -89,11 +89,11 @@
   }
 
   // ---------- telemetria ----------
-  const temp = (t, warmAt, src) => t == null
-    ? `<span class="t">--°C</span>`
+  const temp = (t, warmAt, src, hint) => t == null
+    ? `<span class="t">--°C</span>${hint ? `<span class="aprox">SEM SENSOR</span>` : ""}`
     : `<b class="t${t >= warmAt ? " warm" : ""}">${Math.round(t)}°C</b>${src === "acpi" ? `<span class="aprox">APROX</span>` : ""}`;
   const METRICS = {
-    cpu: { name: "CPU", sub: (s) => temp(s.sys?.cpuTemp, 85, s.sys?.cpuTempSrc) },
+    cpu: { name: "CPU", sub: (s) => temp(s.sys?.cpuTemp, 85, s.sys?.cpuTempSrc, s.sys?.cpuTempHint) },
     gpu: { name: "GPU", sub: (s) => temp(s.gpuTemp, 80) },
     ram: { name: "RAM", sub: (s) => (s.ramUsedGb != null ? `<b>${s.ramUsedGb}</b> / ${s.ramTotalGb} GB` : "") },
     vram: { name: "VRAM", sub: (s) => (s.vramUsedGb != null ? `<b>${s.vramUsedGb}</b> / ${s.vramTotalGb} GB` : "") },
@@ -117,7 +117,7 @@
       </div>
       <div class="sub">&nbsp;</div>`;
     gauges[m] = { el, def, last: "" };
-    if (m === "cpu") el.title = "Temperatura da CPU: com o LibreHardwareMonitor aberto vem do sensor de verdade; sem ele, da zona térmica do Windows (APROX) quando a placa tiver";
+    if (m === "cpu") el.title = "Temperatura da CPU: vem do ajudante de sensores (rode scripts\\instalar-sensores.ps1 uma vez)";
   });
 
   function updateGauges(s) {
@@ -137,6 +137,7 @@
       if (key === g.last) continue; // nada mudou: não mexe no DOM (sem repintar)
       g.last = key;
       g.el.classList.toggle("hot", v >= 85);
+      if (m === "cpu") g.el.dataset.hint = s.sys?.cpuTempHint || "";
       $(".val", g.el).style.strokeDasharray = `${(ARC * v) / 100} 400`;
       $(".pct", g.el).innerHTML = `${v}<small>%</small>`;
       $(".sub", g.el).innerHTML = sub;
@@ -252,6 +253,11 @@
     }
   }
 
+  // CPU sem temperatura: tocar no relógio explica o que falta
+  $('.gauge[data-metric="cpu"]').addEventListener("pointerdown", (e) => {
+    const h = e.currentTarget.dataset.hint;
+    if (h) toast(`Temperatura da CPU: ${h}`);
+  });
   $("#btn-claude").addEventListener("pointerdown", () => run({ type: "claude" }));
   $("#btn-rest").addEventListener("pointerdown", () => run({ type: "rest" }));
   $("#games-all").addEventListener("pointerdown", () => run({ type: "games" }));
