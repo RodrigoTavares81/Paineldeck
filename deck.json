@@ -36,7 +36,7 @@
 //  (imagens na pasta wwwroot/games)
 //
 //  MODO JOGO: o app percebe sozinho quando um jogo abre (pela pasta da Steam/Ubisoft/Epic/Xbox ou pelo .exe)
-//  e troca o painel pra tela do jogo: FPS, tempo da sessão, macros do jogo e o tempo de jogo da semana.
+//  e troca o painel pra tela do jogo (na Navy: FPS, tempo da sessão e temperaturas no lugar das férias).
 //  Campos opcionais em cada jogo de "games":
 //   "process": "ForHonor.exe"                     reconhece pelo nome do .exe (ou lista ["a.exe", "b.exe"])
 //   "macros": [ { "icon": "💬", "label": "gg", "action": {...} } ]   botões na tela do jogo (até 8)
@@ -47,7 +47,9 @@
 //   detectUnknown = jogo fora da lista também conta (com o nome da pasta); idleMinutes = parado esse tempo não conta;
 //   libraries = outras pastas onde ficam jogos. FPS: rode scripts/ativar-fps.ps1 uma vez (baixa o PresentMon).
 //
-//  "news": notícias da cena Navy (opcional) → { "title": "IA", "feeds": ["https://...rss"], "max": 8, "refreshMinutes": 20 }
+//  "news": notícias da cena Navy (opcional) → { "title": "IA", "feeds": ["https://...rss"], "max": 18, "refreshMinutes": 20 }
+//  (cabem 9 de uma vez; com mais, a lista troca de página sozinha)
+//  "navy": { "animacao": 10 }  quadros por segundo do mar das férias na Navy (0 = tudo parado, gasta ainda menos GPU)
 //  (RSS ou Atom; sem essa seção usa o Google News sobre IA em português)
 // =====================================================================
 {

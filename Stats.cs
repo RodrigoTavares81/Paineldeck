@@ -32,15 +32,30 @@ internal sealed class Stats
     private GpuInfo? gpu;
     private int gpuBusy;
     private long gpuNext;
+    private bool nvmlFailed;
 
     /// <summary>Último valor lido da GPU (null sem placa NVIDIA). A leitura roda em segundo plano a cada 2s.</summary>
-    // shortcut: só NVIDIA (nvidia-smi); pra AMD/Intel, trocar pelos contadores PDH "GPU Adapter Memory".
+    // shortcut: só NVIDIA; pra AMD/Intel, trocar pelos contadores PDH "GPU Engine"/"GPU Adapter Memory".
     public GpuInfo? Gpu()
     {
         if (Environment.TickCount64 >= gpuNext && Interlocked.Exchange(ref gpuBusy, 1) == 0)
         {
             gpuNext = Environment.TickCount64 + 2000;
-            Task.Run(() => { try { gpu = QueryNvidia(); } catch { gpu = null; } finally { gpuBusy = 0; } });
+            Task.Run(() =>
+            {
+                try
+                {
+                    // NVML direto (a mesma biblioteca que o nvidia-smi usa): não abre um processo novo a cada 2s
+                    if (!nvmlFailed)
+                    {
+                        try { gpu = Nvml.Query(); return; }
+                        catch { nvmlFailed = true; }
+                    }
+                    gpu = QueryNvidia();
+                }
+                catch { gpu = null; }
+                finally { gpuBusy = 0; }
+            });
         }
         return gpu;
     }
@@ -70,3 +85,41 @@ internal sealed class Stats
 }
 
 internal sealed record GpuInfo(double Usage, double VramPercent, double VramUsedGb, double VramTotalGb, double TempC, string? Name);
+
+/// <summary>NVML (nvml.dll, vem com o driver da NVIDIA em System32). Lança exceção se não tiver.</summary>
+internal static class Nvml
+{
+    private static IntPtr device;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct Utilization { public uint Gpu, Memory; }
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct Memory { public ulong Total, Free, Used; }
+
+    [System.Runtime.InteropServices.DllImport("nvml.dll", EntryPoint = "nvmlInit_v2")] private static extern int Init();
+    [System.Runtime.InteropServices.DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetHandleByIndex_v2")] private static extern int GetHandle(uint index, out IntPtr device);
+    [System.Runtime.InteropServices.DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetUtilizationRates")] private static extern int GetUtilization(IntPtr device, out Utilization u);
+    [System.Runtime.InteropServices.DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetMemoryInfo")] private static extern int GetMemory(IntPtr device, out Memory m);
+    [System.Runtime.InteropServices.DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetTemperature")] private static extern int GetTemperature(IntPtr device, int sensor, out uint temp);
+    [System.Runtime.InteropServices.DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetName")] private static extern int GetName(IntPtr device, byte[] name, uint length);
+
+    private static string? name;
+
+    public static GpuInfo Query()
+    {
+        if (device == IntPtr.Zero)
+        {
+            Check(Init());
+            Check(GetHandle(0, out device));
+            var buf = new byte[96];
+            if (GetName(device, buf, (uint)buf.Length) == 0) name = System.Text.Encoding.ASCII.GetString(buf).TrimEnd('\0');
+        }
+        Check(GetUtilization(device, out var u));
+        Check(GetMemory(device, out var m));
+        GetTemperature(device, 0, out var t); // 0 = NVML_TEMPERATURE_GPU
+        const double gib = 1024d * 1024 * 1024;
+        return new GpuInfo(u.Gpu, Math.Round(100.0 * m.Used / Math.Max(1, m.Total), 1), Math.Round(m.Used / gib, 1), Math.Round(m.Total / gib, 1), t, name);
+    }
+
+    private static void Check(int r) { if (r != 0) throw new InvalidOperationException($"NVML {r}"); }
+}
