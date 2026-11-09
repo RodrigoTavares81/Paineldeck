@@ -19,6 +19,8 @@ public sealed class PanelForm : Form
     private readonly Mic mic = new();
     private readonly Media media = new();
     private readonly News news = new();
+    private readonly ClaudeSessions sessions;
+    private readonly Voice voice;
     private readonly Playtime playtime;
     private readonly Fps fps;
     private readonly GameMode game;
@@ -48,10 +50,12 @@ public sealed class PanelForm : Form
         deck.Reload();
         runner = new ActionRunner(settings, deck, mic, EnsureTargetFocused);
         playtime = new Playtime(settings.Root);
+        sessions = new ClaudeSessions(settings.Root);
+        voice = new Voice(settings.Root);
         fps = new Fps(settings);
         game = new GameMode(deck, playtime, fps, a => runner.RunAsync(a));
         updater = new Updater(settings, () => { quitting = true; Close(); });
-        Crash.BeforeExit += () => { sys.Dispose(); fps.Dispose(); playtime.Dispose(); tray.Visible = false; };
+        Crash.BeforeExit += () => { voice.Dispose(); sys.Dispose(); fps.Dispose(); playtime.Dispose(); tray.Visible = false; };
 
         Text = "PainelDeck";
         FormBorderStyle = FormBorderStyle.None;
@@ -279,6 +283,32 @@ public sealed class PanelForm : Form
                     var force = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("force", out var f) && f.ValueKind == JsonValueKind.True;
                     Post(new { type = "result", id, ok = true, result = await news.GetAsync(deck.Snapshot(), force) });
                     return;
+                }
+                if (method == "claudeSessions") // lê os .jsonl do Claude Code: fora da thread da janela
+                {
+                    var snap = deck.Snapshot();
+                    Post(new { type = "result", id, ok = true, result = await Task.Run(() => sessions.List(snap)) });
+                    return;
+                }
+                if (method == "claudeSend") // { id, text }: roda `claude --resume` em segundo plano e volta na hora
+                {
+                    var r = sessions.Send(deck.Snapshot(), args.GetProperty("id").GetString() ?? "", args.GetProperty("text").GetString() ?? "");
+                    Post(new { type = "result", id, ok = true, result = r });
+                    return;
+                }
+                if (method == "voice") // { cmd: "start" | "stop" | "cancel" | "state" }: grava o microfone e vira texto
+                {
+                    var cmd = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("cmd", out var c) ? c.GetString() : "state";
+                    object r = cmd switch
+                    {
+                        "start" => await voice.StartAsync(deck.Snapshot()),
+                        "stop" => await voice.StopAsync(deck.Snapshot()),
+                        "cancel" => Cancel(),
+                        _ => voice.State(),
+                    };
+                    Post(new { type = "result", id, ok = true, result = r });
+                    return;
+                    object Cancel() { voice.Cancel(); return voice.State(); }
                 }
                 Post(new { type = "result", id, ok = true, result = HandleCall(method, args) });
                 return;

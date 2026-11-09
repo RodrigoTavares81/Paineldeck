@@ -48,9 +48,15 @@
 //   libraries = outras pastas onde ficam jogos. FPS: rode scripts/ativar-fps.ps1 uma vez (baixa o PresentMon).
 //
 //  "news": notícias da cena Navy (opcional) → { "title": "IA", "feeds": ["https://...rss"], "max": 18, "refreshMinutes": 20 }
-//  (cabem 9 de uma vez; com mais, a lista troca de página sozinha)
-//  "navy": { "animacao": 10 }  quadros por segundo do mar das férias na Navy (0 = tudo parado, gasta ainda menos GPU)
-//  (RSS ou Atom; sem essa seção usa o Google News sobre IA em português)
+//  (cabem 9 de uma vez; com mais, a lista troca de página sozinha; RSS ou Atom; sem essa seção usa o Google News sobre IA)
+//  "navy": { "animacao": 10, "coluna": "claude" }
+//   animacao = quadros por segundo do mar das férias na Navy (0 = tudo parado, gasta ainda menos GPU)
+//   coluna   = o que vai na coluna da direita: "claude" (sessões do Claude Code do PC, padrão) ou "noticias"
+//  "claude": sessões do Claude Code na Navy (opcional) →
+//   { "hours": 72, "max": 14, "permissionMode": "acceptEdits", "allowedTools": "",
+//     "whisper": { "exe": "C:\\...\\whisper-cli.exe", "model": "C:\\...\\ggml-large-v3-turbo-q5_0.bin", "language": "pt" } }
+//   hours/max = quais sessões aparecem; permissionMode = o que o Claude pode fazer sozinho quando você manda mensagem pelo painel;
+//   áudio: rode scripts/instalar-whisper.ps1 uma vez (sem Whisper usa o ditado do Windows, que precisa de internet)
 // =====================================================================
 {
   "grid": {
