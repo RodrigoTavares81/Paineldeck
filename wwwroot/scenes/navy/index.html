@@ -27,15 +27,14 @@
       <div class="chips">
         <!-- modo jogo: "JOGANDO · 1h12" (some quando não tem jogo aberto) -->
         <div class="chip playing" id="chip-play" hidden><i class="rec"></i><span>JOGANDO</span><b id="chip-play-time">0min</b></div>
-        <!-- fora do jogo: tempo jogado hoje; toque mostra o histórico da semana -->
-        <button class="chip action" id="chip-week" hidden title="Tempo de jogo da semana">
-          <svg viewBox="0 0 24 24"><path d="M7 6h10a5 5 0 0 1 4.9 6l-1.1 5.2a2.6 2.6 0 0 1-4.5 1.2L14.2 16H9.8l-2.1 2.4a2.6 2.6 0 0 1-4.5-1.2L2.1 12A5 5 0 0 1 7 6Zm1 3v2H6v2h2v2h2v-2h2v-2h-2V9Zm8.5 1a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm-2 2.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z"/></svg>
-          <span>hoje</span><b id="chip-week-time">0min</b>
-        </button>
         <!-- atualização: aparece quando tem versão nova no GitHub (2 toques pra instalar) -->
         <button class="chip action update" id="chip-update" hidden title="Atualizar o PainelDeck">
           <svg viewBox="0 0 24 24" class="ico-up"><path d="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-2.05-4.95L14 10h7V3l-2.64 2.64A8.97 8.97 0 0 0 12 3Z"/></svg>
           <span id="chip-update-text">Atualizar</span>
+        </button>
+        <button class="chip action claude" id="btn-claude" title="Pedir uma mudança no painel pro Claude">
+          <svg viewBox="0 0 24 24"><path d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9Zm7 12 .9 2.6 2.6.9-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9Z"/></svg>
+          <span>Pedir ao Claude</span>
         </button>
         <button class="chip action" id="btn-rest" title="Modo descanso (Ctrl+Alt+H)">
           <svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
@@ -90,27 +89,10 @@
         </svg>
         <div class="g-stats">
           <div><span class="k">SESSÃO</span><b id="g-session">0:00:00</b></div>
-          <div><span class="k">HOJE</span><b id="g-today">0min</b></div>
+          <div><span class="k">CPU</span><b id="g-cpu">--°</b></div>
+          <div><span class="k">GPU</span><b id="g-gpu">--°</b></div>
         </div>
       </div>
-    </section>
-
-    <!-- ===== modo jogo: macros do jogo (no lugar da prateleira de jogos) ===== -->
-    <section class="card gmacros swap" id="gmacros">
-      <div class="card-head">
-        <span class="label" id="gm-label">MACROS DO JOGO</span>
-        <button class="head-btn" id="gm-all" title="Todas as macros">
-          <svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg><span>todas</span>
-        </button>
-      </div>
-      <div class="gm-grid" id="gm-grid"></div>
-    </section>
-
-    <!-- ===== tempo de jogo da semana (no lugar das notícias: no modo jogo, ou tocando no "hoje") ===== -->
-    <section class="card playtime swap" id="playtime">
-      <div class="card-head"><span class="label">TEMPO DE JOGO</span><span class="pt-total" id="pt-total"></span></div>
-      <div class="pt-bars" id="pt-bars"></div>
-      <ol class="pt-top" id="pt-top"></ol>
     </section>
 
     <!-- ===== jogos (vem do deck.json, seção "games") ===== -->
@@ -134,33 +116,40 @@
       <div class="feed-wrap"><ol class="feed" id="feed"></ol></div>
     </section>
 
-    <!-- ===== telemetria ===== -->
+    <!-- ===== telemetria + dados do PC ===== -->
     <section class="card telemetry card-in" style="--i:4">
       <div class="card-head"><span class="label">TELEMETRIA</span><span class="live"><i></i>ao vivo</span></div>
-      <div class="gauges">
-        <div class="gauge" data-metric="cpu"></div>
-        <div class="gauge" data-metric="gpu"></div>
-        <div class="gauge" data-metric="ram"></div>
-        <div class="gauge" data-metric="vram"></div>
+      <div class="tele-body">
+        <div class="gauges">
+          <div class="gauge" data-metric="cpu"></div>
+          <div class="gauge" data-metric="gpu"></div>
+          <div class="gauge" data-metric="ram"></div>
+          <div class="gauge" data-metric="vram"></div>
+        </div>
+        <div class="sys">
+          <div class="stat" id="st-up">
+            <span class="k">LIGADO HÁ</span>
+            <b class="v" id="st-up-v">--</b>
+            <span class="s" id="st-up-s">&nbsp;</span>
+          </div>
+          <div class="stat" id="st-net">
+            <span class="k">REDE</span>
+            <b class="v"><i class="arw dn">↓</i><span id="st-net-down">--</span></b>
+            <span class="s"><i class="arw">↑</i><span id="st-net-up">--</span></span>
+            <svg class="spark" viewBox="0 0 120 30" preserveAspectRatio="none"><path class="area" d=""/><path class="line" d=""/></svg>
+          </div>
+          <div class="stat" id="st-disk">
+            <span class="k">DISCO</span>
+            <b class="v" id="st-disk-v">--</b>
+            <span class="s" id="st-disk-s">&nbsp;</span>
+          </div>
+          <div class="stat" id="st-drives">
+            <span class="k">ESPAÇO</span>
+            <div class="drives" id="st-drives-list"></div>
+          </div>
+        </div>
       </div>
     </section>
-
-    <!-- ===== microfone ===== -->
-    <section class="card micbox card-in" style="--i:5" id="micbox">
-      <button class="mic" id="mic" title="Mutar / desmutar o microfone">
-        <span class="ring"></span><span class="ring r2"></span>
-        <svg viewBox="0 0 24 24" class="ico-on"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11Z"/></svg>
-        <svg viewBox="0 0 24 24" class="ico-off"><path d="M19 11h-2c0 .74-.16 1.43-.43 2.05l1.47 1.47A6.9 6.9 0 0 0 19 11ZM15 11.17V5a3 3 0 0 0-5.94-.6L15 10.33ZM4.27 3 3 4.27l6 6V11a3 3 0 0 0 4.17 2.76l1.66 1.66A5 5 0 0 1 7 11H5a7 7 0 0 0 6 6.92V21h2v-3.08a6.9 6.9 0 0 0 2.73-.94L19.73 21 21 19.73Z"/></svg>
-      </button>
-      <div class="mic-info">
-        <div class="label">MICROFONE</div>
-        <div class="mic-state" id="mic-state">LIGADO</div>
-        <div class="mic-hint" id="mic-hint">toque pra mutar</div>
-      </div>
-    </section>
-
-    <!-- ===== dock de atalhos (vem do deck.json) ===== -->
-    <nav class="dock card-in" style="--i:6" id="dock"></nav>
   </main>
 
   <div id="toast"></div>

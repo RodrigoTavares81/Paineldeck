@@ -21,7 +21,7 @@ Quando um pedido chega pelo botão "✨ Pedir ao Claude", o painel está rodando
      ficam em `wwwroot/games/` (2:3 em pé fica melhor; logo quadrado aparece inteiro). Steam: `steam://rungameid/APPID`,
      Ubisoft: `uplay://launch/ID/0`, Xbox/Store: `run` com `explorer.exe` e `shell:AppsFolder\AUMID`.
 2. **`wwwroot/widgets.js`** — widgets são mini-apps com `defineWidget("nome", { mount(el, cfg, api) { ...; return { tick(now), status(s), click(e), destroy() } } })`.
-   - `tick` roda a cada 1s, `status(s)` recebe `{ cpu, ram, ramUsedGb, ramTotalGb, gpu, vram, vramUsedGb, vramTotalGb, gpuTemp, micMuted, obs }`
+   - `tick` roda a cada 1s, `status(s)` recebe `{ cpu, ram, ramUsedGb, ramTotalGb, gpu, vram, vramUsedGb, vramTotalGb, gpuTemp, micMuted, obs, sys }`
      (os de GPU vêm `null` sem placa NVIDIA).
    - `api.run(action)` executa qualquer ação do deck; `api.toast(msg)` mostra um aviso.
    - Dá pra usar `fetch` pra APIs públicas sem chave (ex.: open-meteo.com pro clima). Nada de chave/segredo no código.
@@ -32,15 +32,20 @@ Quando um pedido chega pelo botão "✨ Pedir ao Claude", o painel está rodando
    O CSS do editor, do diálogo ✨, da roda de jogos e da gaveta de macros fica em `wwwroot/overlays.css` (a cena Navy também usa).
    - **Cenas:** o painel pode mostrar outra tela no lugar do clássico: `"panelScene"` no `settings.json` (`"classic"` ou `"navy"`,
      trocado pela bandeja → **Cena do painel**). A cena Navy fica em `wwwroot/scenes/navy/` (desenhada em 1280x720, sem widgets;
-     o dock vem de `deck.navy.dock` ou dos botões das páginas, as férias do widget `"ferias"` ou de `deck.navy.ferias`).
+     sem dock nem card de microfone; as férias vêm do widget `"ferias"` ou de `deck.navy.ferias`).
      Se o Rodrigo pedir mudança "no painel" e a cena for Navy, mexa em `scenes/navy/` (`navy.css`/`navy.js`).
      O `status` da Navy também traz `gpuName` e `media` = `{ title, artist, art, position, duration, playing }` (ou `null`).
+     `status.sys` = `{ uptimeSec, cpuTemp, cpuTempSrc, net: { down, up }, disk: { read, write, busy }, drives: [{ name, label, freeGb, totalGb }] }`
+     (rede/disco em bytes/s; `cpuTemp` vem do LibreHardwareMonitor aberto ou da zona térmica do Windows (`cpuTempSrc: "acpi"`, aproximado), ou `null`).
+   - **Leve na GPU (importante):** na Navy, nada de animação CSS `infinite`, `backdrop-filter` ou `filter: blur` animado: qualquer
+     coisa que nunca para faz o WebView desenhar 60 quadros/s pra sempre. Movimento contínuo vai no loop `fx()` do `navy.js`
+     (poucos quadros/s, `deck.navy.animacao`, padrão 10; 0 = parado). Animação de entrada/clique que termina pode.
    - **Notícias:** `Bridge.call("news")` (ou `{ force: true }` pra buscar de novo) devolve
      `{ title, items: [{ title, source, url, published }], updated, error }`. Quem busca é o C# (os feeds não liberam CORS),
      com cache e atualização em segundo plano. Os feeds ficam na seção raiz opcional `"news"` do `deck.json`:
      `{ "title": "IA", "feeds": ["https://...rss"], "max": 8, "refreshMinutes": 20 }` (sem ela: Google News sobre IA em PT-BR).
    - **Modo jogo:** o C# acha o jogo aberto sozinho e manda `status.game` = `{ name, image, exe, known, since, sessionSec,
-     todaySec, idle, fps, fpsLow, fpsAvg, fpsInfo }` (ou `null`). Na Navy ele troca férias/jogos/notícias pela tela do jogo;
+     todaySec, idle, fps, fpsLow, fpsAvg, fpsInfo }` (ou `null`). Na Navy ele troca as férias pela tela do jogo (FPS, sessão, temperaturas);
      no clássico existe o widget `"jogo"` e o `"page"` do jogo. Por jogo em `"games"`: `"process"`, `"macros"` (botões da tela do jogo),
      `"page"`, `"onStart"`/`"onStop"`; geral em `"gameMode"`. Tempo de jogo: `Bridge.call("playtime")` →
      `{ today, week: [{ date, label, today, total, games }], weekTotal, top, monthTotal, sessions, playing }` (segundos).

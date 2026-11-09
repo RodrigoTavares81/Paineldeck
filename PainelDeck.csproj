@@ -18,6 +18,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
     <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <!-- só pra ler a temperatura da CPU do LibreHardwareMonitor (WMI), quando ele estiver aberto -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

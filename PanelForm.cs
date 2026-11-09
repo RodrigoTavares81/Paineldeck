@@ -15,6 +15,7 @@ public sealed class PanelForm : Form
     private readonly Deck deck;
     private readonly ActionRunner runner;
     private readonly Stats stats = new();
+    private readonly SysInfo sys = new();
     private readonly Mic mic = new();
     private readonly Media media = new();
     private readonly News news = new();
@@ -50,7 +51,7 @@ public sealed class PanelForm : Form
         fps = new Fps(settings);
         game = new GameMode(deck, playtime, fps, a => runner.RunAsync(a));
         updater = new Updater(settings, () => { quitting = true; Close(); });
-        Crash.BeforeExit += () => { fps.Dispose(); playtime.Dispose(); tray.Visible = false; };
+        Crash.BeforeExit += () => { sys.Dispose(); fps.Dispose(); playtime.Dispose(); tray.Visible = false; };
 
         Text = "PainelDeck";
         FormBorderStyle = FormBorderStyle.None;
@@ -370,6 +371,7 @@ public sealed class PanelForm : Form
             vramTotalGb = gpu?.VramTotalGb,
             gpuTemp = gpu?.TempC,
             gpuName = gpu?.Name,
+            sys = sys.Read(), // { uptimeSec, cpuTemp, cpuTempSrc, net, disk, drives }
             media = media.Current is { } m
                 ? new { title = m.Title, artist = m.Artist, art = m.Art, position = m.Position, duration = m.Duration, playing = m.Playing }
                 : null,

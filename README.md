@@ -70,9 +70,12 @@ Pra mexer no visual sem o app: na pasta `PainelDeck` rode `python -m http.server
 ## Cenas: Clássico e Navy
 
 Bandeja → **Cena do painel** → **Clássico** (o painel editável de sempre) ou **Navy** (tela pronta azul-marinho com contagem
-das férias, telemetria com nome da GPU, microfone, "tocando agora" do Windows com capa e um dock de atalhos).
-A escolha fica no `settings.json` (`"panelScene": "classic" | "navy"`, padrão `"classic"`). Na Navy, os botões
-🎮 Jogos, 🔁 Macros e ✨ Claude abrem a mesma roda, gaveta e caixa do clássico. Arquivos: `wwwroot/scenes/navy/`.
+das férias, capas dos jogos, notícias de IA, telemetria com temperatura da CPU e da GPU, e dados do PC: tempo ligado, rede, disco e espaço livre).
+A escolha fica no `settings.json` (`"panelScene": "classic" | "navy"`, padrão `"classic"`). Na Navy, **roda** e
+**Pedir ao Claude** abrem a mesma roda e caixa do clássico. A Navy é feita pra quase não usar a GPU parada (nada de
+animação CSS infinita nem blur animado; o mar das férias anda a 10 quadros/s, `"navy": { "animacao": 0 }` deixa parado).
+**Temperatura da CPU:** o Windows não dá a do sensor sem admin. Com o [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor)
+aberto, o painel lê dele (sensor de verdade); sem ele, usa a zona térmica do Windows (marcado APROX), quando a placa-mãe tiver. Arquivos: `wwwroot/scenes/navy/`.
 Preview: `python -m http.server` na pasta `PainelDeck` e abrir `http://localhost:8000/wwwroot/scenes/navy/`.
 
 ## 🌙 Modo descanso
@@ -98,8 +101,8 @@ coloque no `settings.json`. Os botões da página "OBS" usam nomes de cena de ex
 ## 🎮 Modo jogo
 
 Abriu um jogo, o painel percebe sozinho (a cada 2s, só lendo a lista de processos, sem mexer em janela nenhuma) e troca de cara:
-na **Navy**, as férias viram o **FPS ao vivo** (com 1% low, média e gráfico do último minuto), a prateleira vira as **macros do jogo**
-e as notícias viram o **tempo de jogo da semana**. No topo aparece **JOGANDO · 1h12**. Fechou o jogo, volta tudo.
+na **Navy**, as férias viram o **FPS ao vivo** (com 1% low, média e gráfico do último minuto), a sessão e as temperaturas
+de CPU e GPU, e a capa do jogo ganha o selo **JOGANDO**. No topo aparece **JOGANDO · 1h12**. Fechou o jogo, volta tudo.
 No clássico tem o widget `{ "widget": "jogo" }` e o `"page"` do jogo (abre aquela página junto com o jogo).
 
 Como ele reconhece: pelo `"process"` do jogo (`"ForHonor.exe"`), pelo pacote da Store/Xbox (o `shell:AppsFolder\...` da ação)
@@ -113,7 +116,7 @@ próprio Windows, sem injetar nada no jogo (tranquilo com anti-cheat). Pra ligar
 "Usuários de log de desempenho" do Windows (pede o UAC). Depois saia e entre no Windows. Sem isso, o modo jogo funciona igual, só sem FPS.
 
 **Tempo de jogo:** fica em `playtime.json` (só no seu PC). Conta só enquanto o jogo está aberto **e** você está mexendo:
-parado mais de `"idleMinutes"` (padrão 10) não conta. Fora do jogo, o chip **hoje 1h08** no topo da Navy mostra a semana.
+parado mais de `"idleMinutes"` (padrão 10) não conta. (A Navy não mostra mais o histórico; ele continua em `Bridge.call("playtime")`.)
 
 ## Iniciar com o Windows, reinício e atualização
 

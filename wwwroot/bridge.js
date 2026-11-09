@@ -51,6 +51,12 @@ window.Bridge = (() => {
       ramUsedGb: 17.3, ramTotalGb: 31.9, micMuted: mic, obs: false,
       gpu: 8 + Math.random() * 30, vram: 21, vramUsedGb: 2.5, vramTotalGb: 11.9, gpuTemp: 47,
       game: fakeGameStatus(), update: { ...fakeUpdate },
+      sys: {
+        uptimeSec: Math.round(performance.now() / 1000) + 2 * 86400 + 4 * 3600 + 12 * 60, cpuTemp: 54 + Math.round(Math.random() * 4), cpuTempSrc: "LibreHardwareMonitor",
+        net: { down: Math.round(Math.random() < 0.15 ? 2.5e6 * Math.random() : 90000 * Math.random()), up: Math.round(25000 * Math.random()) },
+        disk: { read: Math.round(4e6 * Math.random()), write: Math.round(1.5e6 * Math.random()), busy: Math.round(Math.random() * 12) },
+        drives: [{ name: "C:", label: "", freeGb: 312.4, totalGb: 931.5 }, { name: "D:", label: "Jogos", freeGb: 84.2, totalGb: 1863 }],
+      },
     });
     window.__previewUpdate = fakeUpdate;
     fake();

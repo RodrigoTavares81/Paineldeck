@@ -125,6 +125,6 @@ internal sealed class News
         int Int(string k, int def, int min, int max) => n?[k] is JsonValue v && v.TryGetValue<int>(out var i) ? Math.Clamp(i, min, max) : def;
         var feeds = (n?["feeds"] as JsonArray)?.Select(f => f is JsonValue v && v.TryGetValue<string>(out var s) ? s : null)
             .Where(s => Uri.TryCreate(s, UriKind.Absolute, out var u) && u.Scheme is "http" or "https").Select(s => s!).ToArray();
-        return new Config(Str("title", "IA"), feeds is { Length: > 0 } ? feeds : new[] { DefaultFeed }, Int("max", 8, 1, 50), Int("refreshMinutes", 20, 5, 1440));
+        return new Config(Str("title", "IA"), feeds is { Length: > 0 } ? feeds : new[] { DefaultFeed }, Int("max", 18, 1, 50), Int("refreshMinutes", 20, 5, 1440));
     }
 }

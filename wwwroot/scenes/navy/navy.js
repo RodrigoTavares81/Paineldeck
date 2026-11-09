@@ -4,10 +4,12 @@
 //   - férias: pega o widget "ferias" do deck (inicio/volta) ou deck.navy.ferias
 //   - jogos: seção "games" do deck (capas grandes; "roda" abre a roda de jogos)
 //   - notícias: Bridge.call("news") (o C# busca os feeds de "news" no deck.json)
-//   - dock: deck.navy.dock (lista de botões) ou os botões da 1ª página (menos mic/mídia, que têm lugar próprio)
-//   - modo jogo: status.game (o C# acha o jogo aberto) → FPS/sessão no lugar das férias, "macros" do jogo
-//     no lugar da prateleira e o tempo de jogo da semana (Bridge.call("playtime")) no lugar das notícias
+//   - telemetria: CPU/GPU (com temperatura), RAM, VRAM + dados do PC (status.sys: tempo ligado, rede, disco, espaço)
+//   - modo jogo: status.game (o C# acha o jogo aberto) → FPS/sessão/temperaturas no lugar das férias
+//     e o selo JOGANDO na capa do jogo
 //   - atualização: status.update (chip no topo; 2 toques → Bridge.call("update"))
+//   - leve na GPU: nada se mexe em CSS sem parar; o mar e as bolinhas piscando são movidos aqui,
+//     poucas vezes por segundo ("navy": { "animacao": 10 } no deck.json = quadros por segundo; 0 = parado)
 // =====================================================================
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -87,10 +89,12 @@
   }
 
   // ---------- telemetria ----------
-  const hot = (t) => (t >= 80 ? ` class="warm"` : "");
+  const temp = (t, warmAt, src) => t == null
+    ? `<span class="t">--°C</span>`
+    : `<b class="t${t >= warmAt ? " warm" : ""}">${Math.round(t)}°C</b>${src === "acpi" ? `<span class="aprox">APROX</span>` : ""}`;
   const METRICS = {
-    cpu: { name: "CPU", sub: (s, g) => `pico 1 min <b>${Math.round(Math.max(...g.hist))}%</b>` },
-    gpu: { name: "GPU", sub: (s) => (s.gpuTemp != null ? `<b${hot(s.gpuTemp)}>${s.gpuTemp}°C</b>` : "--°C") },
+    cpu: { name: "CPU", sub: (s) => temp(s.sys?.cpuTemp, 85, s.sys?.cpuTempSrc) },
+    gpu: { name: "GPU", sub: (s) => temp(s.gpuTemp, 80) },
     ram: { name: "RAM", sub: (s) => (s.ramUsedGb != null ? `<b>${s.ramUsedGb}</b> / ${s.ramTotalGb} GB` : "") },
     vram: { name: "VRAM", sub: (s) => (s.vramUsedGb != null ? `<b>${s.vramUsedGb}</b> / ${s.vramTotalGb} GB` : "") },
   };
@@ -112,7 +116,8 @@
         <div class="name">${def.name}</div>
       </div>
       <div class="sub">&nbsp;</div>`;
-    gauges[m] = { el, def, hist: [] };
+    gauges[m] = { el, def, last: "" };
+    if (m === "cpu") el.title = "Temperatura da CPU: com o LibreHardwareMonitor aberto vem do sensor de verdade; sem ele, da zona térmica do Windows (APROX) quando a placa tiver";
   });
 
   function updateGauges(s) {
@@ -120,28 +125,92 @@
       const raw = s[m];
       if (raw == null) {
         g.el.classList.add("na");
+        g.last = "";
         $(".pct", g.el).innerHTML = "—";
         $(".sub", g.el).textContent = "sem leitura";
         continue;
       }
       g.el.classList.remove("na");
-      const v = Math.max(0, Math.min(100, Number(raw)));
-      g.hist.push(v);
-      if (g.hist.length > 60) g.hist.shift(); // 1 leitura por segundo = último minuto
+      const v = Math.round(Math.max(0, Math.min(100, Number(raw))));
+      const sub = g.def.sub(s) || "&nbsp;";
+      const key = v + "|" + sub;
+      if (key === g.last) continue; // nada mudou: não mexe no DOM (sem repintar)
+      g.last = key;
       g.el.classList.toggle("hot", v >= 85);
       $(".val", g.el).style.strokeDasharray = `${(ARC * v) / 100} 400`;
-      $(".pct", g.el).innerHTML = `${Math.round(v)}<small>%</small>`;
-      $(".sub", g.el).innerHTML = g.def.sub(s, g) || "&nbsp;";
+      $(".pct", g.el).innerHTML = `${v}<small>%</small>`;
+      $(".sub", g.el).innerHTML = sub;
     }
   }
 
-  // ---------- microfone ----------
-  const mic = $("#mic"), micbox = $("#micbox");
-  function updateMic(s) {
-    const muted = !!s.micMuted;
-    micbox.classList.toggle("muted", muted);
-    $("#mic-state").textContent = muted ? "MUTADO" : "LIGADO";
-    $("#mic-hint").textContent = muted ? "toque pra ligar" : "toque pra mutar";
+  // ---------- dados do PC (status.sys) ----------
+  const setText = (sel, v) => { const el = $(sel); if (el.textContent !== v) el.textContent = v; };
+  const setHtml = (sel, v) => { const el = $(sel); if (el.innerHTML !== v) el.innerHTML = v; };
+  function upFmt(sec) {
+    const d = Math.floor(sec / 86400), h = Math.floor(sec / 3600) % 24, m = Math.floor(sec / 60) % 60;
+    if (d > 0) return `${d}<small>d</small> ${pad(h)}<small>h</small> ${pad(m)}<small>m</small>`;
+    return `${h}<small>h</small> ${pad(m)}<small>m</small>`;
+  }
+  // bytes/s → "12,4 Mb/s" (rede em bits, igual o speedtest)
+  function bits(bps) {
+    const b = (bps || 0) * 8;
+    if (b >= 1e9) return `${(b / 1e9).toFixed(2).replace(".", ",")} Gb/s`;
+    if (b >= 1e6) return `${(b / 1e6).toFixed(b >= 1e8 ? 0 : 1).replace(".", ",")} Mb/s`;
+    if (b >= 1e3) return `${Math.round(b / 1e3)} kb/s`;
+    return `${Math.round(b)} b/s`;
+  }
+  function bytes(bps) {
+    const b = bps || 0;
+    if (b >= 1e9) return `${(b / 1e9).toFixed(1).replace(".", ",")} GB/s`;
+    if (b >= 1e6) return `${(b / 1e6).toFixed(b >= 1e8 ? 0 : 1).replace(".", ",")} MB/s`;
+    if (b >= 1e3) return `${Math.round(b / 1e3)} KB/s`;
+    return `0 KB/s`;
+  }
+  const netHist = [];
+  let bootShown = "";
+  function updateSys(s) {
+    const x = s.sys;
+    if (!x) { setText("#st-up-v", "--"); setText("#st-up-s", "reinicie o app pra ver"); return; }
+    // tempo ligado
+    setHtml("#st-up-v", upFmt(x.uptimeSec || 0));
+    const boot = new Date(Date.now() - (x.uptimeSec || 0) * 1000);
+    const bootTxt = `desde ${boot.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "")} ${pad(boot.getHours())}:${pad(boot.getMinutes())}`;
+    if (bootTxt !== bootShown) { bootShown = bootTxt; setText("#st-up-s", bootTxt); }
+    // rede
+    if (x.net) {
+      setText("#st-net-down", bits(x.net.down));
+      setText("#st-net-up", bits(x.net.up));
+      netHist.push(x.net.down);
+      if (netHist.length > 60) netHist.shift();
+      drawNet();
+    }
+    // disco
+    if (x.disk) {
+      setHtml("#st-disk-v", `${x.disk.busy != null ? x.disk.busy : "--"}<small>%</small>`);
+      setHtml("#st-disk-s", `L <b>${bytes(x.disk.read)}</b> · E <b>${bytes(x.disk.write)}</b>`);
+      const st = $("#st-disk");
+      let bar = $(".busy", st);
+      if (!bar) { bar = document.createElement("i"); bar.className = "busy"; st.appendChild(bar); }
+      bar.style.width = (x.disk.busy || 0) + "%";
+      bar.classList.toggle("hot", (x.disk.busy || 0) >= 90);
+    }
+    // espaço livre
+    const html = (x.drives || []).slice(0, 2).map((d) => {
+      const usedPct = d.totalGb ? Math.round((1 - d.freeGb / d.totalGb) * 100) : 0;
+      const low = d.totalGb && d.freeGb / d.totalGb < 0.1;
+      const free = d.freeGb >= 1000 ? `${(d.freeGb / 1024).toFixed(1).replace(".", ",")} TB` : `${Math.round(d.freeGb)} GB`;
+      return `<div class="drive${low ? " low" : ""}"><span class="n">${d.name}</span><span class="f"><b>${free}</b> livres</span><span class="bar"><i style="width:${usedPct}%"></i></span></div>`;
+    }).join("");
+    setHtml("#st-drives-list", html || `<span class="s">--</span>`);
+  }
+  function drawNet() {
+    const svg = $("#st-net .spark"), W = 120, H = 30;
+    if (netHist.length < 2) return;
+    const max = Math.max(125000, ...netHist) * 1.15; // mínimo 1 Mb/s de escala
+    const pts = netHist.map((v, i) => [(i / 59) * W + (60 - netHist.length) * (W / 59), H - (v / max) * H]);
+    const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+    $(".line", svg).setAttribute("d", d);
+    $(".area", svg).setAttribute("d", `${d} L${W} ${H} L${pts[0][0].toFixed(1)} ${H} Z`);
   }
 
   // ---------- ações ----------
@@ -183,43 +252,9 @@
     }
   }
 
-  mic.addEventListener("pointerdown", () => run({ type: "mic", mode: "toggle" }, null, null, "Mic"));
+  $("#btn-claude").addEventListener("pointerdown", () => run({ type: "claude" }));
   $("#btn-rest").addEventListener("pointerdown", () => run({ type: "rest" }));
   $("#games-all").addEventListener("pointerdown", () => run({ type: "games" }));
-
-  // ---------- dock ----------
-  const OWN_PLACE = (it) => it.widget || it.page !== undefined || !it.action || it.action.type === "mic" || it.action.type === "media";
-  function dockItems(deck) {
-    if (deck.navy?.dock) return deck.navy.dock;
-    const items = (deck.pages || []).flatMap((p) => p.items || []).filter((it) => !OWN_PLACE(it));
-    const seen = new Set();
-    return items.filter((it) => { const k = JSON.stringify(it.action); if (seen.has(k)) return false; seen.add(k); return true; });
-  }
-  const SPECIALS = [
-    { icon: "🔁", label: "Macros", action: { type: "macros" } },
-    { icon: "✨", label: "Claude", action: { type: "claude" }, cls: "claude" },
-  ];
-  function renderDock(deck) {
-    const dock = $("#dock");
-    dock.innerHTML = "";
-    const normal = dockItems(deck).filter((it) => !["games", "macros", "claude"].includes(it.action?.type)).slice(0, 8);
-    const make = (it, k, extra = "") => {
-      const b = document.createElement("button");
-      b.className = "key " + extra;
-      b.style.setProperty("--k", k);
-      if (it.color) b.style.setProperty("--accent", it.color);
-      b.innerHTML = `<span class="ico"></span><span class="lbl"></span>`;
-      $(".ico", b).textContent = it.icon || "•";
-      $(".lbl", b).textContent = it.label || "";
-      b.addEventListener("pointerdown", (e) => run(it.action, b, e, it.label));
-      return b;
-    };
-    normal.forEach((it, k) => dock.appendChild(make(it, k)));
-    const sep = document.createElement("div");
-    sep.className = "sep";
-    dock.appendChild(sep);
-    SPECIALS.forEach((it, k) => dock.appendChild(make(it, normal.length + k, "special " + (it.cls || ""))));
-  }
 
   // ---------- jogos ----------
   const PLAY = `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`;
@@ -231,12 +266,13 @@
       shelf.innerHTML = `<div class="empty"><b>Nenhum jogo ainda</b>No ✏️, use 🎮 Jogos pra adicionar</div>`;
       return;
     }
-    list.slice(0, 5).forEach((g, k) => {
+    list.slice(0, 4).forEach((g, k) => {
       const b = document.createElement("button");
       b.className = "game";
+      b.dataset.name = g.name || "";
       b.style.setProperty("--k", k);
       b.title = `Abrir ${g.name || "jogo"}`;
-      b.innerHTML = `<div class="bg"></div><div class="ph"></div><img alt=""><div class="shade"></div>
+      b.innerHTML = `<div class="bg"></div><div class="ph"></div><img alt=""><div class="shade"></div><span class="badge"><i class="rec"></i>JOGANDO</span>
         <div class="foot"><span class="gname"></span><span class="play">${PLAY}</span></div>`;
       $(".gname", b).textContent = g.name || "";
       $(".ph", b).textContent = (g.name || "?").trim().charAt(0).toUpperCase();
@@ -265,10 +301,12 @@
       });
       shelf.appendChild(b);
     });
+    markPlaying();
   }
+  function markPlaying() { document.querySelectorAll(".game").forEach((b) => b.classList.toggle("on", !!gameName && b.dataset.name === gameName)); }
 
   // ---------- notícias de IA ----------
-  const PER_PAGE = 4;
+  const PER_PAGE = 9; // coluna alta: cabem 9 manchetes de uma vez
   let news = { items: [] }, page = 0, newsHover = false;
   const feed = $("#feed");
   $(".news").addEventListener("pointerenter", () => (newsHover = true));
@@ -339,7 +377,7 @@
     return { title: "IA", updated: h(0.1), items: [
       ex("Aqui aparecem as manchetes de IA do Google Notícias quando o app estiver rodando", 0.6),
       ex("Cada manchete abre no navegador com um clique", 2),
-      ex("A lista troca de página sozinha a cada 15 segundos (e para quando o mouse está em cima)", 4),
+      ex("Com mais de 9, a lista troca de página sozinha a cada 25 segundos (e para quando o mouse está em cima)", 4),
       ex("Os feeds ficam em \"news\" no deck.json: dá pra trocar o tema ou pôr outros sites", 6),
       ex("Atualiza sozinho a cada 20 minutos", 9),
       ex("Itens com menos de 3 horas ganham a bolinha vermelha", 12),
@@ -348,7 +386,7 @@
   setInterval(() => {
     stamp();
     if (!newsHover && pages() > 1) { page = (page + 1) % pages(); renderPage(true); }
-  }, 15000);
+  }, 25000);
   setInterval(() => loadNews(false), 10 * 60000);
 
   // ---------- modo jogo ----------
@@ -358,7 +396,7 @@
     return `${Math.floor(m / 60)}h${pad(m % 60)}`;
   };
   const clock = (sec) => { sec = Math.floor(sec || 0); return `${Math.floor(sec / 3600)}:${pad(Math.floor(sec / 60) % 60)}:${pad(sec % 60)}`; };
-  let deckNow = null, gameName = null, fpsHist = [];
+  let deckNow = null, gameName = null, fpsHist = [], lastStatus = {};
   const body = document.body;
 
   function swapIn(...els) { els.forEach((el, k) => { el.style.setProperty("--i", k); el.classList.remove("in"); void el.offsetWidth; el.classList.add("in"); }); }
@@ -371,23 +409,23 @@
       fpsHist = [];
       body.classList.toggle("gaming", !!g);
       $("#chip-play").hidden = !g;
+      markPlaying();
       if (g) {
         $("#g-name").textContent = g.name;
         const art = g.image || gameCfg(g.name)?.image;
         $("#g-art").style.backgroundImage = art ? `url("${art}")` : "";
-        renderGameMacros(g);
-        swapIn($("#gamehero"), $("#gmacros"), $("#playtime"));
+        swapIn($("#gamehero"));
         toast(`Modo jogo: ${g.name}`, "ok");
       } else {
-        swapIn($("#hero"), $(".games"), $(".news"));
+        swapIn($("#hero"));
       }
-      loadPlaytime();
-      updateWeekChip();
     }
     if (!g) return;
     $("#chip-play-time").textContent = dur(g.sessionSec);
     $("#g-session").textContent = clock(g.sessionSec);
-    $("#g-today").textContent = dur(g.todaySec);
+    const t = (sel, v, warmAt) => { const el = $(sel); el.textContent = v == null ? "--°" : `${Math.round(v)}°`; el.classList.toggle("warm", v != null && v >= warmAt); };
+    t("#g-cpu", lastStatus.sys?.cpuTemp, 85);
+    t("#g-gpu", lastStatus.gpuTemp, 80);
     $("#gamehero").classList.toggle("idle", !!g.idle);
     const has = g.fps != null;
     $("#gamehero").classList.toggle("nofps", !has);
@@ -417,86 +455,6 @@
     $(".head", svg).setAttribute("cx", hx + off);
     $(".head", svg).setAttribute("cy", hy);
   }
-
-  // macros do jogo: "macros" do jogo no deck ("games": [{ ..., "macros": [{ icon, label, action }] }]);
-  // sem isso, as macros com nome da seção "macros"
-  function renderGameMacros(g) {
-    const grid = $("#gm-grid");
-    const cfg = gameCfg(g.name);
-    $("#gm-label").textContent = `MACROS · ${g.name.toUpperCase()}`;
-    let items = (cfg?.macros || []).filter((m) => m && m.action);
-    const own = items.length > 0;
-    if (!own) items = Object.keys(deckNow?.macros || {}).map((k) => ({ icon: "🔁", label: k, action: { type: "macro", ref: k } }));
-    grid.innerHTML = "";
-    grid.classList.toggle("few", items.length > 0 && items.length < 4);
-    grid.style.setProperty("--n", Math.max(1, items.length));
-    if (!items.length) {
-      grid.innerHTML = `<div class="gm-empty"><b>Nenhuma macro pra esse jogo</b>
-        <span>No deck.json, ponha <code>"macros": [{ "icon": "💬", "label": "gg", "action": {...} }]</code> no jogo
-        (ou peça pro ✨ Claude).</span></div>`;
-      return;
-    }
-    items.slice(0, 8).forEach((m, k) => {
-      const b = document.createElement("button");
-      b.className = "gm-key";
-      b.style.setProperty("--k", k);
-      if (m.color) b.style.setProperty("--accent", m.color);
-      b.innerHTML = `<span class="ico"></span><span class="lbl"></span>`;
-      $(".ico", b).textContent = m.icon || "•";
-      $(".lbl", b).textContent = m.label || "";
-      b.addEventListener("pointerdown", (e) => run(m.action, b, e, m.label));
-      grid.appendChild(b);
-    });
-  }
-  $("#gm-all").addEventListener("pointerdown", () => run({ type: "macros" }));
-
-  // tempo de jogo da semana
-  let play = null;
-  async function loadPlaytime() {
-    try {
-      play = await Bridge.call("playtime");
-      if (!play) return;
-      renderPlaytime();
-      updateWeekChip();
-    } catch { play = null; $("#chip-week").hidden = true; } // app antigo, sem essa chamada
-  }
-  function renderPlaytime() {
-    const week = play.week || [];
-    const max = Math.max(1800, ...week.map((w) => w.total));
-    $("#pt-total").innerHTML = `7 dias · <b>${dur(play.weekTotal)}</b>`;
-    $("#pt-bars").innerHTML = week.map((w, k) => `
-      <div class="pt-bar${w.today ? " today" : ""}" style="--k:${k}" title="${w.date}">
-        <span class="v">${w.total >= 60 ? dur(w.total) : ""}</span>
-        <i class="col${w.total < 60 ? " zero" : ""}" style="height:${Math.max(3, (w.total / max) * 100)}%"></i>
-        <span class="d">${w.today ? "hoje" : w.label}</span>
-      </div>`).join("");
-    const top = (play.top || []).slice(0, 3);
-    const tmax = Math.max(1, ...top.map((t) => t.sec));
-    const ol = $("#pt-top");
-    ol.innerHTML = "";
-    if (!top.length) { ol.innerHTML = `<li><span class="none">Nenhum jogo nos últimos 7 dias</span></li>`; return; }
-    top.forEach((t, k) => {
-      const li = document.createElement("li");
-      li.className = t.name === gameName ? "on" : "";
-      li.innerHTML = `<span class="n"></span><span class="t">${dur(t.sec)}</span><span class="bar"><i style="width:${(t.sec / tmax) * 100}%;animation-delay:${200 + k * 90}ms"></i></span>`;
-      $(".n", li).textContent = t.name;
-      ol.appendChild(li);
-    });
-  }
-  function updateWeekChip() {
-    const chip = $("#chip-week");
-    chip.hidden = !play || !!gameName;
-    if (play) $("#chip-week-time").textContent = dur(play.today?.total || 0);
-  }
-  let ptTimer = 0;
-  $("#chip-week").addEventListener("pointerdown", () => {
-    const on = !body.classList.contains("show-playtime");
-    body.classList.toggle("show-playtime", on);
-    swapIn(on ? $("#playtime") : $(".news"));
-    clearTimeout(ptTimer);
-    if (on) { loadPlaytime(); ptTimer = setTimeout(() => { body.classList.remove("show-playtime"); swapIn($(".news")); }, 30000); }
-  });
-  setInterval(() => { if (gameName || body.classList.contains("show-playtime") || !play) loadPlaytime(); else updateWeekChip(); }, 60000);
 
   // ---------- atualização ----------
   let upd = null, askUntil = 0, doneSeen = false;
@@ -535,11 +493,9 @@
   function applyDeck(deck) {
     if (!deck) return;
     deckNow = deck;
-    if (gameName) renderGameMacros({ name: gameName });
     const f = findFerias(deck);
     ferias = f ? { inicio: D.parse(f.inicio), volta: D.parse(f.volta) } : null;
     $("#hero").style.display = ferias ? "" : "none";
-    renderDock(deck);
     renderGames(deck);
     tickHero(new Date());
   }
@@ -551,16 +507,39 @@
       const t = Date.now() / 1000;
       s = { ...s, gpu: 38 + 22 * Math.sin(t / 3) + Math.random() * 6, vram: 21 + Math.random() * 2, vramUsedGb: 2.5, vramTotalGb: 11.9, gpuTemp: 47 + Math.round(Math.random() * 3), gpuName: "NVIDIA GeForce RTX 5070" };
     }
+    lastStatus = s;
     updateGauges(s);
-    updateMic(s);
+    updateSys(s);
     setGame(s.game || null);
     setUpdate(s.update);
   });
 
   loadNews(false);
-  loadPlaytime();
 
-  const loop = () => { const now = new Date(); tickClock(now); tickHero(now); };
+  const loop = () => {
+    const now = new Date();
+    tickClock(now);
+    tickHero(now);
+    body.classList.toggle("blink", now.getSeconds() % 2 === 1); // ":" do relógio e bolinhas "ao vivo"/"jogando"
+  };
   loop();
   setInterval(loop, 1000);
+
+  // ---------- mar das férias: poucos quadros por segundo em vez de animação CSS a 60 ----------
+  // Ondas com período de 50 unidades num SVG de 400: andar 200 e voltar pro 0 não dá pra perceber.
+  const waves = [...document.querySelectorAll(".hero .sea path")].map((el, i) => ({ el, speed: [5, -7, 9][i] })); // unidades por segundo
+  const t0 = performance.now();
+  function fx() {
+    const fpsCfg = Number(deckNow?.navy?.animacao ?? 10);
+    const fpsNow = Math.max(0, Math.min(30, isNaN(fpsCfg) ? 10 : fpsCfg));
+    if (fpsNow > 0 && !document.hidden && !gameName && ferias) {
+      const t = (performance.now() - t0) / 1000;
+      for (const w of waves) {
+        const x = -(((t * Math.abs(w.speed)) % 200 + 200) % 200);
+        w.el.setAttribute("transform", `translate(${(w.speed > 0 ? x : -200 - x).toFixed(1)} 0)`);
+      }
+    }
+    setTimeout(fx, fpsNow > 0 ? 1000 / fpsNow : 2000);
+  }
+  fx();
 })();
