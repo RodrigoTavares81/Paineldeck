@@ -49,7 +49,8 @@ Quando um pedido chega pelo botão "✨ Pedir ao Claude", o painel está rodando
    - **Sessões do Claude:** a coluna da direita da Navy mostra as sessões do Claude Code do PC (`scenes/navy/sessions.js`;
      `"navy": { "coluna": "noticias" }` volta as notícias). `Bridge.call("claudeSessions")` → `{ items: [{ id, title, project, cwd,
      branch, updated, state ("working" | "waiting" | "idle"), last, lastRole, recent: [{ role, text }], sending, error }], error }`;
-     `Bridge.call("claudeSend", { id, text })` roda `claude --resume` em segundo plano; áudio: `Bridge.call("voice", { cmd: "start" | "state" | "stop" | "cancel" })`
+     `Bridge.call("claudeSend", { id, text })` roda `claude --resume` em segundo plano; `Bridge.call("claudeNew", { cwd, text })` → `{ id }`
+     abre sessão nova (botão "+ nova"; pastas em `folders` da resposta de `claudeSessions`); áudio: `Bridge.call("voice", { cmd: "start" | "state" | "stop" | "cancel" })`
      (o `stop` devolve `{ text }`; Whisper local em `whisper/` via `scripts/instalar-whisper.ps1`, senão ditado do Windows). Config em `"claude"` no `deck.json`.
    - **Modo jogo:** o C# acha o jogo aberto sozinho e manda `status.game` = `{ name, image, exe, known, since, sessionSec,
      todaySec, idle, fps, fpsLow, fpsAvg, fpsInfo }` (ou `null`). Na Navy ele troca as férias pela tela do jogo (FPS, sessão, temperaturas);
