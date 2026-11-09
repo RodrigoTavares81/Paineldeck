@@ -54,7 +54,7 @@
 //   coluna   = o que vai na coluna da direita: "claude" (sessões do Claude Code do PC, padrão) ou "noticias"
 //  "claude": sessões do Claude Code na Navy (opcional) →
 //   { "hours": 72, "max": 14, "permissionMode": "acceptEdits", "allowedTools": "",
-//     "folders": ["C:\\\\Users\\\\rodri\\\\Projetos\\\\x"], "defaultFolder": "...",   (pastas do "+ nova"; as das sessões recentes entram sozinhas)
+//     "folders": ["C:\\Users\\rodri\\Projetos\\x"], "defaultFolder": "...",   (pastas do "+ nova"; as das sessões recentes entram sozinhas)
 //     "whisper": { "exe": "C:\\...\\whisper-cli.exe", "model": "C:\\...\\ggml-large-v3-turbo-q5_0.bin", "language": "pt" } }
 //   hours/max = quais sessões aparecem; permissionMode = o que o Claude pode fazer sozinho quando você manda mensagem pelo painel;
 //   áudio: rode scripts/instalar-whisper.ps1 uma vez (sem Whisper usa o ditado do Windows, que precisa de internet)
