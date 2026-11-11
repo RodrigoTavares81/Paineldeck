@@ -102,10 +102,12 @@
     // replay: desligado = liga; ligado = salva os últimos N
     const rp = r.replay || {}, span = (s) => (s % 60 === 0 ? `${s / 60} min` : s > 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`);
     $("#rc-replay-row").classList.toggle("on", !!rp.active);
-    setText($("#rc-replay-text"), rp.active ? `Salvar últimos ${span(rp.seconds || 120)}` : `Ligar replay · ${span(rp.seconds || 120)}`);
+    setText($("#rc-replay-text"), rp.opening ? "Abrindo o OBS…" : rp.active ? `Salvar últimos ${span(rp.key || rp.seconds || 60)}` : `Ligar replay · ${span(rp.seconds || 300)}`);
     const rk0 = keys(rp.hotkey);
     $("#rc-replay-key").hidden = !rk0; setText($("#rc-replay-key"), rk0);
     $("#rc-replay-off").hidden = !rp.active;
+
+    renderHub(r, rp, span);
 
     const key = JSON.stringify(r.tracks) + (r.micDevice || "");
     if (key !== trackKey) {
@@ -137,6 +139,63 @@
   $("#rc-test").addEventListener("pointerdown", async (e) => { if (await cmd("test", null, e.currentTarget, e)) toast("Níveis ao vivo por 20 segundos", "ok"); });
   $("#rc-replay").addEventListener("pointerdown", (e) => cmd("replay", null, e.currentTarget, e));
   $("#rc-replay-off").addEventListener("pointerdown", (e) => cmd("replay-off", null, e.currentTarget, e));
+
+  // ---------- replay no modo jogo (entra no lugar do JOGAR) ----------
+  // Prévia: um quadro do OBS de vez em quando ("gravacao": { "previaJogo": 1 } quadros/s; 0 desliga), só com jogo aberto e o cartão na tela.
+  let hubKey = "", hubTimer = 0, hubBusy = false;
+  const hubFps = () => { const v = Number(cfg().previaJogo ?? 1); return isNaN(v) ? 1 : Math.max(0, Math.min(5, v)); };
+  function renderHub(r, rp, span) {
+    const pill = $("#rh-pill");
+    pill.className = `rc-pill ${rp.active ? "ok" : r.obs === "error" ? "error" : "closed"}`;
+    setText($("#rh-pill-text"), rp.opening ? "abrindo o OBS" : rp.active ? `ligado · guarda ${span(rp.seconds)}` : r.obs === "closed" ? "OBS fechado" : "desligado");
+    setText($("#rh-cap"), rp.active ? "SALVAR OS ÚLTIMOS" : "TOQUE PRA LIGAR O REPLAY");
+    const k = JSON.stringify([rp.buttons, rp.active, rp.key, rp.hotkey]);
+    if (k !== hubKey) {
+      hubKey = k;
+      $("#rh-btns").innerHTML = (rp.buttons || [30, 60, 300]).map((s) => {
+        const [n, u] = s % 60 === 0 ? [s / 60, "min"] : [s, "s"];
+        return `<button class="rh-btn${rp.active ? "" : " off"}" data-s="${s}"><b>${n}</b><span>${u}</span>${s === rp.key && rp.hotkey ? `<kbd>${esc(keys(rp.hotkey))}</kbd>` : ""}</button>`;
+      }).join("");
+    }
+    const clips = rp.clips || [], ck = JSON.stringify(clips.map((c) => c.path)) + Math.floor(Date.now() / 60000);
+    setText($("#rh-count"), clips.length ? String(clips.length) : "");
+    const ul = $("#rh-clips");
+    if (ul.dataset.k !== ck) {
+      ul.dataset.k = ck;
+      ul.innerHTML = clips.slice(0, 3).map((c, i) => `
+        <li data-i="${i}" title="${esc(c.path)}"><svg viewBox="0 0 24 24"><path d="M4 5h11v4l5-3v12l-5-3v4H4Z"/></svg>
+          <span class="nm">Últimos ${esc(span(c.seconds))}</span><span class="mt">${size(c.bytes)} · ${ago(c.at)}</span></li>`).join("")
+        || `<li class="none">Os replays que você salvar nesse jogo aparecem aqui.</li>`;
+    }
+    const want = body.classList.contains("gaming") && !body.classList.contains("recording") && r.obs === "ok" && hubFps() > 0;
+    if (want && !hubTimer) hubTimer = setTimeout(hubFrame, 300);
+    if (!want) { clearTimeout(hubTimer); hubTimer = 0; $("#rh-live").hidden = true; }
+  }
+  async function hubFrame() {
+    hubTimer = 0;
+    const ok = body.classList.contains("gaming") && !body.classList.contains("recording") && rec?.obs === "ok" && hubFps() > 0;
+    if (!ok || hubBusy) return;
+    if (!document.hidden) {
+      hubBusy = true;
+      try {
+        const f = await Bridge.call("record", { cmd: "frame", width: 480 });
+        if (f?.image) { $("#rh-img").src = f.image; $("#rh-prev").classList.add("has"); $("#rh-live").hidden = false; }
+      } catch { /* tenta de novo no próximo */ }
+      hubBusy = false;
+    }
+    hubTimer = setTimeout(hubFrame, 1000 / hubFps());
+  }
+  $("#rh-btns").addEventListener("pointerdown", (e) => {
+    const b = e.target.closest(".rh-btn");
+    if (!b) return;
+    if (rec?.replay?.active) cmd("replay", { seconds: Number(b.dataset.s) }, b, e);
+    else cmd("replay-on", null, b, e);
+  });
+  $("#rh-clips").addEventListener("pointerdown", (e) => {
+    const li = e.target.closest("li[data-i]");
+    if (li) cmd("open", { path: rec.replay.clips[li.dataset.i].path }, li, e);
+  });
+  $("#rh-games").addEventListener("pointerdown", () => Bridge.run({ type: "games" }));
 
   // ---------- escolher o microfone ----------
   const pick = $("#recpick");

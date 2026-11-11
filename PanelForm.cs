@@ -373,6 +373,7 @@ public sealed class PanelForm : Form
     {
         var ram = stats.Ram();
         var gpu = stats.Gpu();
+        recorder.SetGame(game.Current != null); // jogo aberto: liga o replay sozinho ("gravacao.replayNoJogo")
         Post(new
         {
             type = "status",

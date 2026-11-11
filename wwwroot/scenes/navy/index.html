@@ -109,6 +109,28 @@
       <div class="shelf" id="shelf"></div>
     </section>
 
+    <!-- ===== replay (rec.js): com jogo aberto entra no lugar do JOGAR — prévia ao vivo e botões pra salvar os últimos segundos ===== -->
+    <section class="card rhub swap" id="rhub">
+      <div class="card-head">
+        <span class="label">REPLAY</span>
+        <span class="rc-pill" id="rh-pill"><i></i><span id="rh-pill-text">desligado</span></span>
+        <button class="head-btn" id="rh-games" title="Abrir a roda com todos os jogos"><span>jogos</span></button>
+      </div>
+      <div class="rh-body">
+        <div class="rh-prev" id="rh-prev">
+          <img id="rh-img" alt="">
+          <div class="rh-empty" id="rh-empty">Prévia do que o OBS está pegando</div>
+          <span class="rh-live" id="rh-live" hidden><i></i>AO VIVO</span>
+        </div>
+        <div class="rh-side">
+          <div class="rh-cap" id="rh-cap">SALVAR OS ÚLTIMOS</div>
+          <div class="rh-btns" id="rh-btns"></div>
+          <div class="rh-clips-head"><span class="label">CLIPES DA SESSÃO</span><span class="rh-count" id="rh-count"></span></div>
+          <ul class="rc-list rh-clips" id="rh-clips"></ul>
+        </div>
+      </div>
+    </section>
+
     <!-- ===== gravação (rec.js): botão de gravar no OBS, faixas de áudio e últimas gravações ===== -->
     <section class="card reccard card-in" style="--i:3" id="reccard">
       <div class="card-head">

@@ -27,11 +27,15 @@ internal sealed class Recorder : IDisposable
         public readonly List<byte> History = new();
     }
 
-    private sealed record Cfg(string Scene, string ObsPath, (string Name, string Source)[] Tracks, int Replay);
+    private sealed record Cfg(string Scene, string ObsPath, (string Name, string Source)[] Tracks, int Replay, int[] ReplayButtons, int ReplayKey, bool ReplayInGame, string Ffmpeg);
 
     private readonly ObsClient obs;
     private readonly Deck deck;
-    private readonly string hotkey, replayHotkey;
+    private readonly string hotkey, replayHotkey, root;
+    private readonly List<object> clips = new();   // replays salvos desde que o app abriu (o mais novo primeiro)
+    private int replayTrim;                        // corte pedido pro próximo replay salvo (segundos; 0 = o buffer inteiro)
+    private bool playing, replayAuto;              // jogo aberto / o replay foi ligado sozinho por causa do jogo
+    private DateTime replayWhenReadyUntil;         // abriu o OBS pra ligar o replay: liga assim que ele responder
     private readonly object gate = new();
     private readonly CancellationTokenSource stop = new();
     private readonly SemaphoreSlim wake = new(0, 1);
@@ -65,6 +69,7 @@ internal sealed class Recorder : IDisposable
         this.deck = deck;
         hotkey = settings.Hotkeys.TryGetValue("record", out var hk) ? hk : "";
         replayHotkey = settings.Hotkeys.TryGetValue("replay", out var rhk) ? rhk : "";
+        root = settings.Root;
         obs = new ObsClient(settings.ObsUrl, settings.ObsPassword, SubScenes | SubInputs | SubOutputs | SubMeters);
         obs.Event += OnEvent;
         try { if (File.Exists(DirFile)) dir = File.ReadAllText(DirFile).Trim(); } catch { }
@@ -101,9 +106,11 @@ internal sealed class Recorder : IDisposable
                 case "open": OpenInExplorer(args?["path"]?.GetValue<string>()); break;
                 case "devices": return await DevicesAsync();
                 case "device": await SetDeviceAsync(args?["id"]?.GetValue<string>() ?? ""); break;
-                case "replay": await ReplayAsync(); break;
+                case "replay": await ReplayAsync(args?["seconds"] is JsonValue sv && sv.TryGetValue<double>(out var sec) ? (int)sec : -1); break;
+                case "replay-on": await ReplayOnAsync(); break;
                 case "replay-off":
-                    if (obs.IsConnected) { try { await obs.RequestAsync("StopReplayBuffer", null); } catch { } lock (gate) replayActive = false; }
+                    if (obs.IsConnected) { try { await obs.RequestAsync("StopReplayBuffer", null); } catch { } }
+                    lock (gate) { replayActive = false; replayAuto = false; replayWhenReadyUntil = default; }
                     break;
                 case "history": return History();
                 case "status": break;
@@ -206,17 +213,28 @@ internal sealed class Recorder : IDisposable
     // ---------- replay: salva os últimos segundos ----------
 
     /// <summary>
-    /// Buffer de repetição do OBS. Desligado: liga (a partir daí o OBS guarda os últimos N segundos na memória).
-    /// Ligado: salva esses segundos num arquivo na pasta das gravações. A duração vem de "gravacao": { "replay": 120 }.
+    /// Buffer de repetição do OBS: ele guarda os últimos "gravacao.replay" segundos na memória. Desligado: liga.
+    /// Ligado: salva num arquivo na pasta das gravações e, se o pedido foi menor que o buffer (30 s de 5 min),
+    /// corta o arquivo com o ffmpeg (sem recodificar). seconds: -1 = o corte do atalho, 0 = o buffer inteiro.
     /// </summary>
-    private async Task ReplayAsync()
+    private async Task ReplayAsync(int seconds)
+    {
+        if (!await ReplayOnAsync(announce: true)) return; // estava desligado: ligou agora (ainda não tem o que salvar)
+        var cfg = ReadCfg();
+        lock (gate) replayTrim = seconds < 0 ? cfg.ReplayKey : seconds;
+        await obs.RequestAsync("SaveReplayBuffer", null); // o arquivo chega pelo evento ReplayBufferSaved
+    }
+
+    /// <summary>Garante o buffer ligado. true = já estava ligado; false = ligou agora (ou abriu o OBS pra ligar).</summary>
+    private async Task<bool> ReplayOnAsync(bool announce = true)
     {
         if (!obs.IsConnected && !ObsRunning())
         {
             ObsLocalConfig.EnableServer();
             LaunchObs();
-            lock (gate) { state = "connecting"; nextConnect = DateTime.UtcNow.AddSeconds(3); }
-            throw new InvalidOperationException("Abri o OBS. Aperte de novo em alguns segundos pra ligar o replay.");
+            lock (gate) { state = "connecting"; nextConnect = DateTime.UtcNow.AddSeconds(3); replayWhenReadyUntil = DateTime.UtcNow.AddSeconds(90); }
+            if (announce) Note("Abrindo o OBS pra ligar o replay…");
+            return false;
         }
         await EnsureObsAsync(launch: false);
         bool on;
@@ -226,22 +244,94 @@ internal sealed class Recorder : IDisposable
             // o OBS só cria o buffer se ele estiver ligado nas configurações quando o OBS abre
             foreach (var cat in new[] { "SimpleOutput", "AdvOut" })
                 try { await obs.RequestAsync("SetProfileParameter", new JsonObject { ["parameterCategory"] = cat, ["parameterName"] = "RecRB", ["parameterValue"] = "true" }); } catch { }
-            throw new InvalidOperationException("O Buffer de Repetição estava desligado no OBS. Liguei nas configurações dele: feche e abra o OBS uma vez e aperte de novo.");
+            throw new InvalidOperationException("O Buffer de Repetição estava desligado no OBS. Liguei nas configurações dele: feche e abra o OBS uma vez.");
         }
-        if (on)
-        {
-            await obs.RequestAsync("SaveReplayBuffer", null); // o nome do arquivo chega pelo evento ReplayBufferSaved
-            return;
-        }
+        if (on) { lock (gate) replayActive = true; return true; }
         var cfg = ReadCfg();
         var notes = new List<string>();
-        if (!await PrepareAsync(notes)) return;
+        if (!await PrepareAsync(notes)) return false;
         foreach (var cat in new[] { "SimpleOutput", "AdvOut" }) // a duração é lida pelo OBS na hora de ligar o buffer
             try { await obs.RequestAsync("SetProfileParameter", new JsonObject { ["parameterCategory"] = cat, ["parameterName"] = "RecRBTime", ["parameterValue"] = cfg.Replay.ToString() }); } catch { }
         await obs.RequestAsync("StartReplayBuffer", null);
         lock (gate) { replayActive = true; replaySeconds = cfg.Replay; }
-        notes.Insert(0, $"Replay ligado: aperte de novo pra salvar os últimos {Span(cfg.Replay)}.");
-        Note(string.Join(" ", notes));
+        notes.Insert(0, $"Replay ligado: guardando os últimos {Span(cfg.Replay)}.");
+        if (announce || notes.Count > 1) Note(string.Join(" ", notes));
+        return false;
+    }
+
+    /// <summary>
+    /// Chamado 1x por segundo com "tem jogo aberto?". Com "replayNoJogo" (padrão ligado), abrir um jogo liga o replay
+    /// sozinho e fechar o jogo desliga (só se foi o painel que ligou).
+    /// </summary>
+    public void SetGame(bool on)
+    {
+        bool start, stopIt;
+        lock (gate)
+        {
+            if (on == playing) return;
+            playing = on;
+            start = on && !replayActive;
+            stopIt = !on && replayAuto;
+            if (start) replayAuto = true;
+        }
+        if (start && !ReadCfg().ReplayInGame) { lock (gate) replayAuto = false; return; }
+        if (start) _ = Task.Run(async () => { try { await ReplayOnAsync(announce: true); } catch (Exception ex) { lock (gate) replayAuto = false; Fail(ex.Message); } });
+        if (stopIt) Fire("replay-off");
+    }
+
+    /// <summary>O ffmpeg.exe pra cortar o replay: "gravacao.ffmpeg", a pasta tools\ do painel (scripts\instalar-ffmpeg.ps1) ou o PATH.</summary>
+    private string? FindFfmpeg()
+    {
+        var c = ReadCfg().Ffmpeg;
+        if (c != "" && File.Exists(c)) return c;
+        var local = Path.Combine(root, "tools", "ffmpeg.exe");
+        if (File.Exists(local)) return local;
+        foreach (var d in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+            try { var f = Path.Combine(d.Trim(), "ffmpeg.exe"); if (d.Trim() != "" && File.Exists(f)) return f; } catch { }
+        return null;
+    }
+
+    /// <summary>O OBS salvou o buffer inteiro: corta os últimos "trim" segundos (cópia direta, sem recodificar) e fica só com o corte.</summary>
+    private async Task ReplaySavedAsync(string? saved, int trim, int buffer)
+    {
+        string? final = saved; int secs = buffer; string? extra = null;
+        if (!string.IsNullOrEmpty(saved) && trim > 0 && trim < buffer)
+        {
+            var ff = FindFfmpeg();
+            if (ff == null) extra = $"veio com os {Span(buffer)} inteiros (pra cortar, rode scripts\\instalar-ffmpeg.ps1 uma vez)";
+            else
+                try
+                {
+                    for (int i = 0; i < 20 && !File.Exists(saved); i++) await Task.Delay(100);
+                    var outPath = Path.Combine(Path.GetDirectoryName(saved)!, $"{Path.GetFileNameWithoutExtension(saved)} ({Span(trim).Replace(" ", "")}){Path.GetExtension(saved)}");
+                    var psi = new ProcessStartInfo(ff) { UseShellExecute = false, CreateNoWindow = true }; // sem janela: não rouba o foco do jogo
+                    foreach (var a in new[] { "-y", "-v", "error", "-sseof", $"-{trim}", "-i", saved, "-map", "0", "-c", "copy", outPath }) psi.ArgumentList.Add(a);
+                    using var p = Process.Start(psi)!;
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+                    await p.WaitForExitAsync(cts.Token);
+                    if (p.ExitCode == 0 && File.Exists(outPath) && new FileInfo(outPath).Length > 0)
+                    {
+                        try { File.Delete(saved); } catch { } // o arquivo inteiro que o próprio painel acabou de pedir
+                        final = outPath; secs = trim;
+                    }
+                    else extra = "não consegui cortar, ficou o arquivo inteiro";
+                }
+                catch { extra = "não consegui cortar, ficou o arquivo inteiro"; }
+        }
+        long size = 0;
+        try { if (final != null && File.Exists(final)) size = new FileInfo(final).Length; } catch { }
+        lock (gate)
+        {
+            replayLast = final; nextSlow = default;
+            if (final != null)
+            {
+                clips.Insert(0, new { name = Path.GetFileName(final), path = final, seconds = secs, bytes = size, at = DateTimeOffset.Now.ToString("o") });
+                if (clips.Count > 12) clips.RemoveAt(clips.Count - 1);
+            }
+        }
+        var msg = $"Replay salvo: últimos {Span(secs)}" + (extra != null ? $" ({extra})" : "");
+        if (extra != null) Fail(msg); else Note(msg);
+        Wake();
     }
 
     private static string Span(int seconds) => seconds % 60 == 0 ? $"{seconds / 60} min" : seconds > 60 ? $"{seconds / 60} min {seconds % 60} s" : $"{seconds} s";
@@ -572,6 +662,12 @@ internal sealed class Recorder : IDisposable
             lock (gate) { state = "ok"; error = null; needRefresh = true; }
         }
 
+        bool rbNow;
+        lock (gate) { rbNow = now < replayWhenReadyUntil; if (rbNow) replayWhenReadyUntil = default; }
+        if (rbNow)
+            try { await ReplayOnAsync(announce: true); }
+            catch (Exception ex) { Fail(ex.Message); }
+
         bool refresh;
         lock (gate) { refresh = needRefresh || Key(ReadCfg()) != cfgKey; needRefresh = false; }
         if (refresh) await RefreshAsync();
@@ -764,9 +860,9 @@ internal sealed class Recorder : IDisposable
                 break;
             case "ReplayBufferSaved":
                 var saved = (string?)d["savedReplayPath"];
-                lock (gate) { replayLast = saved; nextSlow = default; }
-                Note("Replay salvo" + (string.IsNullOrEmpty(saved) ? "" : ": " + Path.GetFileName(saved)));
-                Wake();
+                int trim, buffer;
+                lock (gate) { trim = replayTrim; replayTrim = 0; buffer = replaySeconds > 0 ? replaySeconds : ReadCfg().Replay; }
+                _ = Task.Run(() => ReplaySavedAsync(saved, trim, buffer));
                 break;
             case "InputSettingsChanged":
                 lock (gate) needRefresh = true;
@@ -829,8 +925,15 @@ internal sealed class Recorder : IDisposable
         for (int i = 0; i < list.Count; i++)
             if (list[i].Item1 == "") list[i] = (i == 0 ? "Microfone" : i == 1 ? "Sistema" : $"Faixa {i + 1}", list[i].Item2);
         // sem "cena" no deck: "auto" (cria a cena do monitor principal); "cena": "" = grava o que estiver no OBS
-        int replay = g?["replay"] is JsonValue rv && rv.TryGetValue<double>(out var rs) ? (int)Math.Clamp(rs, 5, 1800) : 120;
-        return new Cfg(g?["cena"] == null ? "auto" : S(g["cena"]), S(g?["obs"]), list.Take(4).ToArray(), replay);
+        // replay: "replay" = quanto o buffer guarda; "replayBotoes" = os cortes oferecidos; "replayAtalho" = o corte do atalho
+        int N(string k, int def) => g?[k] is JsonValue v && v.TryGetValue<double>(out var d) ? (int)Math.Clamp(d, 5, 1800) : def;
+        var buttons = (g?["replayBotoes"] as JsonArray)?.Select(b => b is JsonValue v && v.TryGetValue<double>(out var d) ? (int)Math.Clamp(d, 5, 1800) : 0)
+            .Where(b => b > 0).Distinct().OrderBy(b => b).Take(4).ToArray();
+        if (buttons == null || buttons.Length == 0) buttons = new[] { 30, 60, 300 };
+        int replay = Math.Max(N("replay", 300), buttons.Max());
+        bool inGame = !(g?["replayNoJogo"] is JsonValue ig && ig.TryGetValue<bool>(out var igb) && !igb);
+        return new Cfg(g?["cena"] == null ? "auto" : S(g["cena"]), S(g?["obs"]), list.Take(4).ToArray(), replay, buttons,
+            Math.Min(N("replayAtalho", 60), replay), inGame, S(g?["ffmpeg"]));
     }
 
     // ---------- o que o painel lê ----------
@@ -859,7 +962,7 @@ internal sealed class Recorder : IDisposable
                 freeGb,
                 hotkey,
                 micDevice,
-                replay = new { active = replayActive, seconds = replayActive && replaySeconds > 0 ? replaySeconds : ReadCfg().Replay, last = replayLast, hotkey = replayHotkey },
+                replay = ReplayStatus(),
                 metering = Streaming(),
                 tracks = tracks.Select(t => new { name = t.Name, source = t.Source, muted = t.Muted, found = t.Found, mixer = t.Mixer }).ToArray(),
                 markers = markers.ToArray(),
@@ -868,6 +971,18 @@ internal sealed class Recorder : IDisposable
                 recent,
             };
         }
+    }
+
+    private object ReplayStatus() // com o gate
+    {
+        var c = ReadCfg();
+        int buffer = replayActive && replaySeconds > 0 ? replaySeconds : c.Replay;
+        return new
+        {
+            active = replayActive, seconds = buffer, last = replayLast, hotkey = replayHotkey, key = c.ReplayKey,
+            buttons = c.ReplayButtons.Where(b => b <= buffer).ToArray(), auto = c.ReplayInGame, clips = clips.ToArray(),
+            opening = DateTime.UtcNow < replayWhenReadyUntil,
+        };
     }
 
     private bool Streaming() => active || DateTime.UtcNow < meterUntil; // com o gate
