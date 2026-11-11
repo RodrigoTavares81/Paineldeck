@@ -141,9 +141,9 @@
   $("#rc-replay-off").addEventListener("pointerdown", (e) => cmd("replay-off", null, e.currentTarget, e));
 
   // ---------- replay no modo jogo (entra no lugar do JOGAR) ----------
-  // Prévia: um quadro do OBS de vez em quando ("gravacao": { "previaJogo": 1 } quadros/s; 0 desliga), só com jogo aberto e o cartão na tela.
+  // Prévia: um quadro do OBS de vez em quando ("gravacao": { "previaJogo": 5 } quadros/s, máx. 15; 0 desliga), só com jogo aberto e o cartão na tela.
   let hubKey = "", hubTimer = 0, hubBusy = false;
-  const hubFps = () => { const v = Number(cfg().previaJogo ?? 1); return isNaN(v) ? 1 : Math.max(0, Math.min(5, v)); };
+  const hubFps = () => { const v = Number(cfg().previaJogo ?? 5); return isNaN(v) ? 5 : Math.max(0, Math.min(15, v)); };
   function renderHub(r, rp, span) {
     const pill = $("#rh-pill");
     pill.className = `rc-pill ${rp.active ? "ok" : r.obs === "error" ? "error" : "closed"}`;
