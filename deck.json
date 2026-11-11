@@ -58,14 +58,19 @@
 //  { "type": "record" } mandam o OBS gravar; o painel vira a tela de gravação (tempo, linha do tempo com as duas faixas
 //  de áudio, níveis ao vivo, pausar/marcar/parar). Precisa do OBS 28+ com Ferramentas → Configurações do servidor WebSocket ligado
 //  (se tiver senha, ela vai em "obs" no settings.json). Com o OBS fechado, o painel abre ele sozinho.
-//  "gravacao": { "cena": "auto", "faixas": [ { "nome": "Microfone", "fonte": "" }, { "nome": "Sistema", "fonte": "" } ], "obs": "", "voltar": 12, "previa": 5 }
+//  "gravacao": { "cena": "auto", "faixas": [ { "nome": "Microfone", "fonte": "" }, { "nome": "Sistema", "fonte": "" } ], "obs": "", "voltar": 12, "previa": 5, "replay": 300, "replayBotoes": [30, 60, 300], "replayAtalho": 60, "replayNoJogo": true, "previaJogo": 1 }
 //   cena   = "auto": o painel cria no OBS a cena "PainelDeck · Tela principal" (captura do monitor principal) e grava ela;
 //            "" grava a cena que estiver no OBS; ou o nome de uma cena sua
 //   faixas = as fontes de áudio mostradas (até 4). "fonte" vazia = o Mic/Aux (1ª) e o Áudio do desktop (2ª) do OBS;
 //            senão, o nome da fonte igualzinho no OBS
 //   obs    = caminho do obs64.exe se não estiver no lugar padrão; voltar = segundos mostrando o resumo depois de parar
 //   previa = quadros por segundo da prévia do vídeo na tela de gravação (padrão 5, máx. 15; 0 = sem vídeo, mais leve)
-//   Outros comandos da ação: { "type": "record", "cmd": "start" | "stop" | "pause" | "mark" }
+//   REPLAY: o Buffer de Repetição do OBS guarda os últimos "replay" segundos na memória (padrão 300) e só salva quando você pede.
+//   Com jogo aberto, o JOGAR vira o cartão REPLAY: prévia ao vivo ("previaJogo" quadros/s, 0 = sem) e um botão por corte de
+//   "replayBotoes" (segundos). Ctrl+Alt+R (atalho "replay") salva os últimos "replayAtalho" segundos; a ação é
+//   { "type": "record", "cmd": "replay", "seconds": 30 }. "replayNoJogo": false = não liga sozinho quando um jogo abre.
+//   Pra cortar menos que o buffer inteiro o painel usa o ffmpeg: rode scripts\instalar-ffmpeg.ps1 uma vez (ou "ffmpeg": "C:\\...\\ffmpeg.exe")
+//   Outros comandos da ação: { "type": "record", "cmd": "start" | "stop" | "pause" | "mark" | "replay" | "replay-on" | "replay-off" }
 // =====================================================================
 {
   "grid": {
@@ -178,7 +183,12 @@
       { "nome": "Sistema", "fonte": "" }
     ],
     "voltar": 12,
-    "previa": 5
+    "previa": 5,
+    "replay": 300,
+    "replayBotoes": [30, 60, 300],
+    "replayAtalho": 60,
+    "replayNoJogo": true,
+    "previaJogo": 1
   },
   "gameMode": {
     "enabled": true,

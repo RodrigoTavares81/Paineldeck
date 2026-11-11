@@ -521,3 +521,68 @@ body.recording #sky .g1 { background: radial-gradient(closest-side, #4a0d23, rgb
 .r-btn.sm { height: 44px; padding: 0 18px; font-size: 14px; border-radius: 14px; }
 .r-btn.pop { animation: pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.6); }
 #recstage.done .r-ctl .r-btn:not(.back), #recstage.starting .r-ctl .r-btn:not(.stop) { opacity: 0.35; pointer-events: none; }
+
+/* replay (guarda os últimos minutos) e seletor de microfone */
+.rc-replay { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; }
+.rc-replay-btn { position: relative; overflow: hidden; flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 12px; border-radius: 10px;
+  background: rgba(5, 13, 34, 0.55); border: 1px solid var(--line); color: var(--muted); font: 600 12.5px var(--font); cursor: pointer; transition: border-color 0.2s, color 0.2s, background 0.2s; }
+.rc-replay-btn svg { width: 15px; height: 15px; fill: var(--ice-dim); flex-shrink: 0; }
+.rc-replay-btn span { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-replay-btn kbd { font-family: var(--mono); font-size: 9.5px; color: var(--ice); border: 1px solid var(--line-strong); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+.rc-replay-btn:hover { color: var(--text); border-color: var(--line-strong); background: rgba(28, 60, 128, 0.5); }
+.rc-replay-btn:active { transform: scale(0.98); }
+.rc-replay.on .rc-replay-btn { color: var(--text); border-color: rgba(143, 176, 255, 0.45); background: rgba(28, 60, 128, 0.45); }
+.rc-replay.on .rc-replay-btn svg { fill: var(--ice); }
+.rc-replay-off { height: 34px; padding: 0 10px; border-radius: 10px; background: none; border: 1px solid var(--line); color: var(--faint); font: 600 11px var(--font); cursor: pointer; }
+.rc-replay-off:hover { color: var(--red-hot); border-color: rgba(224, 35, 63, 0.5); }
+.rc-sec-head .head-btn + .head-btn { margin-left: 6px; }
+.rc-sec-head .label { margin-right: auto; }
+
+#recpick { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(3, 8, 23, 0.72); }
+#recpick[hidden] { display: none; }
+.rp-box { width: min(520px, 86vw); max-height: 78vh; display: flex; flex-direction: column; padding: 20px; border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--navy-850), var(--navy-950)); border: 1px solid var(--line-strong); box-shadow: 0 30px 80px -20px #000; }
+.rp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.rp-src { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.rp-list { list-style: none; overflow-y: auto; margin: 0 -6px; }
+.rp-list li { display: flex; align-items: center; gap: 12px; padding: 12px 10px; border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text); transition: background 0.15s; }
+.rp-list li:hover { background: rgba(28, 60, 128, 0.45); }
+.rp-list li i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ice-dim); flex-shrink: 0; }
+.rp-list li.cur i { background: var(--ice); border-color: var(--ice); }
+.rp-list li span { flex: 1; min-width: 0; }
+.rp-list li small { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--ice); text-transform: uppercase; }
+.rp-list li.none { cursor: default; color: var(--muted); font-weight: 400; }
+
+/* replay no modo jogo: entra no lugar do JOGAR */
+.rhub { grid-area: games; flex-direction: column; }
+body.gaming .rhub { display: flex; }
+body.gaming .games { display: none; }
+.rhub .card-head .rc-pill { margin-left: 12px; margin-right: auto; }
+.rh-body { flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 12px; padding: 10px 16px 14px; }
+.rh-prev { position: relative; min-height: 0; border-radius: 14px; overflow: hidden; background: rgba(3, 8, 23, 0.7); border: 1px solid var(--line); display: grid; place-items: center; }
+.rh-prev img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
+.rh-prev.has img { display: block; }
+.rh-prev.has .rh-empty { display: none; }
+.rh-empty { font-size: 12.5px; color: var(--faint); }
+.rh-live { position: absolute; left: 10px; top: 10px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 999px; background: rgba(3, 8, 23, 0.7);
+  font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; color: var(--text); }
+.rh-live[hidden] { display: none; }
+.rh-live i { width: 6px; height: 6px; border-radius: 50%; background: var(--red-hot); }
+.rh-side { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; gap: 6px 18px; align-items: start; }
+.rh-cap { grid-column: 1; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.18em; color: var(--muted); height: 16px; }
+.rh-btns { grid-column: 1; display: flex; gap: 10px; }
+.rh-btn { position: relative; overflow: hidden; width: 96px; height: 84px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
+  background: linear-gradient(180deg, rgba(28, 60, 128, 0.55), rgba(11, 26, 61, 0.7)); border: 1px solid rgba(143, 176, 255, 0.35); color: var(--text); cursor: pointer;
+  transition: transform 0.15s, border-color 0.2s, background 0.2s; }
+.rh-btn b { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.rh-btn span { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--ice); text-transform: uppercase; margin-top: 3px; }
+.rh-btn kbd { position: absolute; top: 6px; right: 7px; font-family: var(--mono); font-size: 7.5px; color: var(--ice-dim); }
+.rh-btn:hover { transform: translateY(-2px); border-color: var(--ice); }
+.rh-btn:active { transform: scale(0.95); }
+.rh-btn.off { background: rgba(5, 13, 34, 0.55); border-color: var(--line); color: var(--faint); }
+.rh-btn.off span { color: var(--faint); }
+.rh-clips-head { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 8px; height: 16px; }
+.rh-clips-head .label { font-size: 10px; }
+.rh-count { font-family: var(--mono); font-size: 10px; color: var(--ice); }
+.rh-clips { grid-column: 2; grid-row: 2; margin: 0 -8px; height: 84px; }
+.rh-clips li { padding: 4px 8px; }

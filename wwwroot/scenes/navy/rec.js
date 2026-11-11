@@ -65,8 +65,13 @@
     if (el && e) ripple(el, e);
     try {
       quiet = Date.now() + 2500; // o erro já aparece aqui: não repete quando vier no status
+      const seq = rec?.failSeq;
       const r = await Bridge.call("record", { cmd: c, ...extra });
-      if (r && r.tracks) apply(r);
+      if (r && r.tracks) {
+        // deu certo mas veio um recado junto ("passei a gravar em...", "Replay ligado..."): esse tem que aparecer
+        if (seq != null && r.failSeq !== seq && r.fail && r.failSeq !== failSeq) { failSeq = r.failSeq; toast(r.failOk ? r.fail : `Gravação: ${r.fail}`, r.failOk ? "ok" : "err"); }
+        apply(r);
+      }
       return r;
     } catch (err) {
       toast(`Gravação: ${err.message}`);
@@ -94,13 +99,23 @@
     $("#rc-dest").title = r.dir || "";
 
     // faixas (só remonta quando muda alguma coisa; a barrinha do nível é mexida pelo "meters")
-    const key = JSON.stringify(r.tracks);
+    // replay: desligado = liga; ligado = salva os últimos N
+    const rp = r.replay || {}, span = (s) => (s % 60 === 0 ? `${s / 60} min` : s > 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`);
+    $("#rc-replay-row").classList.toggle("on", !!rp.active);
+    setText($("#rc-replay-text"), rp.opening ? "Abrindo o OBS…" : rp.active ? `Salvar últimos ${span(rp.key || rp.seconds || 60)}` : `Ligar replay · ${span(rp.seconds || 300)}`);
+    const rk0 = keys(rp.hotkey);
+    $("#rc-replay-key").hidden = !rk0; setText($("#rc-replay-key"), rk0);
+    $("#rc-replay-off").hidden = !rp.active;
+
+    renderHub(r, rp, span);
+
+    const key = JSON.stringify(r.tracks) + (r.micDevice || "");
     if (key !== trackKey) {
       trackKey = key;
       $("#rc-tracks").innerHTML = r.tracks.map((t, i) => `
         <div class="rc-track${t.muted ? " muted" : ""}" data-i="${i}" title="${t.found ? "Toque pra mutar/desmutar no OBS" : ""}">
           <span class="ico">${ICONS[i] || ICONS[1]}</span>
-          <span class="n">${esc(t.name)}<small>${esc(t.found ? t.source : r.obs === "ok" ? "fonte não achada no OBS" : "")}</small></span>
+          <span class="n">${esc(t.name)}<small>${esc(t.found ? (i === 0 && r.micDevice) || t.source : r.obs === "ok" ? "fonte não achada no OBS" : "")}</small></span>
           <span class="tag">${t.muted ? "MUDO" : t.mixer?.length ? `FAIXA ${t.mixer.join("+")}` : ""}</span>
           <span class="bar"><i></i></span>
         </div>`).join("");
@@ -111,7 +126,7 @@
     const rk = JSON.stringify((r.recent || []).map((f) => f.path)) + Math.floor(Date.now() / 60000);
     if (list.dataset.k !== rk) {
       list.dataset.k = rk;
-      list.innerHTML = (r.recent || []).slice(0, 4).map((f, i) => `
+      list.innerHTML = (r.recent || []).slice(0, 2).map((f, i) => `
         <li data-i="${i}" title="${esc(f.path)}"><svg viewBox="0 0 24 24"><path d="M4 5h11v4l5-3v12l-5-3v4H4Z"/></svg>
           <span class="nm">${esc(f.name)}</span><span class="mt">${size(f.bytes)} · ${ago(f.at)}</span></li>`).join("")
         || `<li class="none">${r.dir ? "Nenhuma gravação nessa pasta ainda." : "Aparecem aqui depois da primeira vez que o painel falar com o OBS."}</li>`;
@@ -122,6 +137,87 @@
     cmd("start", null, e.currentTarget, e);
   });
   $("#rc-test").addEventListener("pointerdown", async (e) => { if (await cmd("test", null, e.currentTarget, e)) toast("Níveis ao vivo por 20 segundos", "ok"); });
+  $("#rc-replay").addEventListener("pointerdown", (e) => cmd("replay", null, e.currentTarget, e));
+  $("#rc-replay-off").addEventListener("pointerdown", (e) => cmd("replay-off", null, e.currentTarget, e));
+
+  // ---------- replay no modo jogo (entra no lugar do JOGAR) ----------
+  // Prévia: um quadro do OBS de vez em quando ("gravacao": { "previaJogo": 1 } quadros/s; 0 desliga), só com jogo aberto e o cartão na tela.
+  let hubKey = "", hubTimer = 0, hubBusy = false;
+  const hubFps = () => { const v = Number(cfg().previaJogo ?? 1); return isNaN(v) ? 1 : Math.max(0, Math.min(5, v)); };
+  function renderHub(r, rp, span) {
+    const pill = $("#rh-pill");
+    pill.className = `rc-pill ${rp.active ? "ok" : r.obs === "error" ? "error" : "closed"}`;
+    setText($("#rh-pill-text"), rp.opening ? "abrindo o OBS" : rp.active ? `ligado · guarda ${span(rp.seconds)}` : r.obs === "closed" ? "OBS fechado" : "desligado");
+    setText($("#rh-cap"), rp.active ? "SALVAR OS ÚLTIMOS" : "TOQUE PRA LIGAR O REPLAY");
+    const k = JSON.stringify([rp.buttons, rp.active, rp.key, rp.hotkey]);
+    if (k !== hubKey) {
+      hubKey = k;
+      $("#rh-btns").innerHTML = (rp.buttons || [30, 60, 300]).map((s) => {
+        const [n, u] = s % 60 === 0 ? [s / 60, "min"] : [s, "s"];
+        return `<button class="rh-btn${rp.active ? "" : " off"}" data-s="${s}"><b>${n}</b><span>${u}</span>${s === rp.key && rp.hotkey ? `<kbd>${esc(keys(rp.hotkey))}</kbd>` : ""}</button>`;
+      }).join("");
+    }
+    const clips = rp.clips || [], ck = JSON.stringify(clips.map((c) => c.path)) + Math.floor(Date.now() / 60000);
+    setText($("#rh-count"), clips.length ? String(clips.length) : "");
+    const ul = $("#rh-clips");
+    if (ul.dataset.k !== ck) {
+      ul.dataset.k = ck;
+      ul.innerHTML = clips.slice(0, 3).map((c, i) => `
+        <li data-i="${i}" title="${esc(c.path)}"><svg viewBox="0 0 24 24"><path d="M4 5h11v4l5-3v12l-5-3v4H4Z"/></svg>
+          <span class="nm">Últimos ${esc(span(c.seconds))}</span><span class="mt">${size(c.bytes)} · ${ago(c.at)}</span></li>`).join("")
+        || `<li class="none">Os replays que você salvar nesse jogo aparecem aqui.</li>`;
+    }
+    const want = body.classList.contains("gaming") && !body.classList.contains("recording") && r.obs === "ok" && hubFps() > 0;
+    if (want && !hubTimer) hubTimer = setTimeout(hubFrame, 300);
+    if (!want) { clearTimeout(hubTimer); hubTimer = 0; $("#rh-live").hidden = true; }
+  }
+  async function hubFrame() {
+    hubTimer = 0;
+    const ok = body.classList.contains("gaming") && !body.classList.contains("recording") && rec?.obs === "ok" && hubFps() > 0;
+    if (!ok || hubBusy) return;
+    if (!document.hidden) {
+      hubBusy = true;
+      try {
+        const f = await Bridge.call("record", { cmd: "frame", width: 480 });
+        if (f?.image) { $("#rh-img").src = f.image; $("#rh-prev").classList.add("has"); $("#rh-live").hidden = false; }
+      } catch { /* tenta de novo no próximo */ }
+      hubBusy = false;
+    }
+    hubTimer = setTimeout(hubFrame, 1000 / hubFps());
+  }
+  $("#rh-btns").addEventListener("pointerdown", (e) => {
+    const b = e.target.closest(".rh-btn");
+    if (!b) return;
+    if (rec?.replay?.active) cmd("replay", { seconds: Number(b.dataset.s) }, b, e);
+    else cmd("replay-on", null, b, e);
+  });
+  $("#rh-clips").addEventListener("pointerdown", (e) => {
+    const li = e.target.closest("li[data-i]");
+    if (li) cmd("open", { path: rec.replay.clips[li.dataset.i].path }, li, e);
+  });
+  $("#rh-games").addEventListener("pointerdown", () => Bridge.run({ type: "games" }));
+
+  // ---------- escolher o microfone ----------
+  const pick = $("#recpick");
+  async function openPick(e) {
+    const d = await cmd("devices", null, e.currentTarget, e);
+    if (!d || !d.items) return;
+    setText($("#rp-src"), `Fonte no OBS: ${d.source}`);
+    $("#rp-list").innerHTML = d.items.map((it) => `<li data-id="${esc(it.id)}" class="${it.id === d.current ? "cur" : ""}"><i></i><span>${esc(it.name)}</span>${it.id === d.current ? "<small>em uso</small>" : ""}</li>`).join("")
+      || `<li class="none">O OBS não listou nenhum microfone.</li>`;
+    pick.hidden = false;
+  }
+  $("#rc-mic").addEventListener("pointerdown", openPick);
+  $("#rp-close").addEventListener("pointerdown", () => (pick.hidden = true));
+  pick.addEventListener("pointerdown", (e) => { if (e.target === pick) pick.hidden = true; });
+  $("#rp-list").addEventListener("pointerdown", async (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (!li) return;
+    const name = li.querySelector("span").textContent;
+    pick.hidden = true;
+    if (await cmd("device", { id: li.dataset.id })) toast(`Microfone: ${name}. Fala alguma coisa e olha a barra.`, "ok");
+  });
+
   $("#rc-folder").addEventListener("pointerdown", (e) => cmd("open", null, e.currentTarget, e));
   $("#rc-tracks").addEventListener("pointerdown", (e) => {
     const row = e.target.closest(".rc-track");
@@ -273,7 +369,11 @@
     while (live.length < r.tracks.length) live.push({ peak: -100, mag: -100, hold: -100, holdAt: 0 });
 
     if (failSeq === null) failSeq = r.failSeq;
-    else if (r.failSeq !== failSeq) { failSeq = r.failSeq; if (r.fail && Date.now() > quiet) toast(`Gravação: ${r.fail}`); }
+    else if (r.failSeq !== failSeq) {
+      failSeq = r.failSeq;
+      if (r.fail && r.failOk) toast(r.fail, "ok");
+      else if (r.fail && Date.now() > quiet) toast(`Gravação: ${r.fail}`);
+    }
 
     renderCard(r);
     showing = on || r.starting || Date.now() < doneUntil;

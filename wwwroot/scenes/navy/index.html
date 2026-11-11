@@ -109,6 +109,28 @@
       <div class="shelf" id="shelf"></div>
     </section>
 
+    <!-- ===== replay (rec.js): com jogo aberto entra no lugar do JOGAR — prévia ao vivo e botões pra salvar os últimos segundos ===== -->
+    <section class="card rhub swap" id="rhub">
+      <div class="card-head">
+        <span class="label">REPLAY</span>
+        <span class="rc-pill" id="rh-pill"><i></i><span id="rh-pill-text">desligado</span></span>
+        <button class="head-btn" id="rh-games" title="Abrir a roda com todos os jogos"><span>jogos</span></button>
+      </div>
+      <div class="rh-body">
+        <div class="rh-prev" id="rh-prev">
+          <img id="rh-img" alt="">
+          <div class="rh-empty" id="rh-empty">Prévia do que o OBS está pegando</div>
+          <span class="rh-live" id="rh-live" hidden><i></i>AO VIVO</span>
+        </div>
+        <div class="rh-side">
+          <div class="rh-cap" id="rh-cap">SALVAR OS ÚLTIMOS</div>
+          <div class="rh-btns" id="rh-btns"></div>
+          <div class="rh-clips-head"><span class="label">CLIPES DA SESSÃO</span><span class="rh-count" id="rh-count"></span></div>
+          <ul class="rc-list rh-clips" id="rh-clips"></ul>
+        </div>
+      </div>
+    </section>
+
     <!-- ===== gravação (rec.js): botão de gravar no OBS, faixas de áudio e últimas gravações ===== -->
     <section class="card reccard card-in" style="--i:3" id="reccard">
       <div class="card-head">
@@ -125,10 +147,20 @@
           <span class="k">CENA</span><span class="v" id="rc-scene">—</span>
           <span class="k">DESTINO</span><span class="v" id="rc-dest">—</span>
         </div>
+        <div class="rc-replay" id="rc-replay-row">
+          <button class="rc-replay-btn" id="rc-replay" title="Replay: o OBS guarda os últimos minutos na memória e salva quando você pedir">
+            <svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8Z"/></svg>
+            <span id="rc-replay-text">Ligar replay</span><kbd id="rc-replay-key" hidden></kbd>
+          </button>
+          <button class="rc-replay-off" id="rc-replay-off" title="Desligar o replay" hidden>✕</button>
+        </div>
       </div>
       <div class="rc-sec">
         <div class="rc-sec-head">
-          <span class="label">FAIXAS DE ÁUDIO</span>
+          <span class="label">ÁUDIO</span>
+          <button class="head-btn" id="rc-mic" title="Escolher qual microfone o OBS grava">
+            <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V22h2v-3.1A7 7 0 0 0 19 12Z"/></svg><span>microfone</span>
+          </button>
           <button class="head-btn" id="rc-test" title="Mostra os níveis ao vivo por 20 segundos, sem gravar">
             <svg viewBox="0 0 24 24"><path d="M3 10h3v4H3Zm5-4h3v12H8Zm5 2h3v8h-3Zm5-5h3v18h-3Z"/></svg><span>testar</span>
           </button>
@@ -272,6 +304,13 @@
   <!-- o app.js do clássico desenha o deck aqui (escondido): games/macros/editor dependem dele (App.deck, App.toast) -->
   <div id="classic" hidden><main id="grid"></main><nav id="tabs"></nav></div>
 
+<div id="recpick" hidden>
+  <div class="rp-box">
+    <div class="rp-head"><span class="label">QUAL MICROFONE GRAVAR</span><button class="head-btn" id="rp-close"><span>fechar</span></button></div>
+    <div class="rp-src" id="rp-src"></div>
+    <ul class="rp-list" id="rp-list"></ul>
+  </div>
+</div>
   <script src="bridge.js"></script>
   <script>window.Widgets = {}; // widgets do clássico não aparecem no Navy: não monta nenhum na grade escondida</script>
   <script src="games.js"></script>

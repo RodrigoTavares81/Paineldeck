@@ -75,6 +75,7 @@ public sealed class PanelForm : Form
         {
             if (name == "rest") rest?.Start();
             if (name == "record") recorder.Fire("toggle"); // grava/para mesmo se a página do painel estiver recarregando
+            if (name == "replay") recorder.Fire("replay"); // 1ª vez liga o buffer; ligado, salva os últimos segundos
             Post(new { type = "hotkey", name });
         };
         if (hotkeys.Failed.Count > 0)
@@ -372,6 +373,7 @@ public sealed class PanelForm : Form
     {
         var ram = stats.Ram();
         var gpu = stats.Gpu();
+        recorder.SetGame(game.Current != null); // jogo aberto: liga o replay sozinho ("gravacao.replayNoJogo")
         Post(new
         {
             type = "status",
