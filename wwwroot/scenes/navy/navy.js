@@ -28,7 +28,7 @@
     toastEl.textContent = msg;
     toastEl.className = "show " + (kind === "ok" ? "ok" : "");
     clearTimeout(toast.t);
-    toast.t = setTimeout(() => (toastEl.className = ""), kind === "ok" ? 2200 : 4500);
+    toast.t = setTimeout(() => (toastEl.className = ""), kind === "ok" ? 2200 : Math.max(4500, String(msg).length * 75)); // aviso comprido fica mais tempo
   }
 
   // ---------- relógio ----------

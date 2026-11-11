@@ -14,7 +14,7 @@ namespace PainelDeck;
 /// </summary>
 internal sealed class ObsClient
 {
-    private readonly string url, password;
+    private readonly string cfgUrl, cfgPassword;
     private ClientWebSocket? ws;
     private readonly SemaphoreSlim connectLock = new(1, 1), sendLock = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonNode?>> pending = new();
@@ -25,7 +25,7 @@ internal sealed class ObsClient
     /// <summary>Evento do OBS (tipo, dados). Chega na thread de leitura do socket: não demore aqui.</summary>
     public event Action<string, JsonObject?>? Event;
 
-    public ObsClient(string url, string password, int subscriptions = 0) { this.url = url; this.password = password; this.subscriptions = subscriptions; }
+    public ObsClient(string url, string password, int subscriptions = 0) { cfgUrl = url; cfgPassword = password; this.subscriptions = subscriptions; }
 
     public bool IsConnected => ws?.State == WebSocketState.Open;
 
@@ -62,6 +62,8 @@ internal sealed class ObsClient
         try
         {
             if (IsConnected) return;
+            // porta e senha: as do settings.json se foram mudadas, senão as da configuração do próprio OBS (lidas a cada conexão)
+            var (url, password) = ObsLocalConfig.Resolve(cfgUrl, cfgPassword);
             ws?.Dispose();
             var socket = ws = new ClientWebSocket();
             helloTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -86,7 +88,7 @@ internal sealed class ObsClient
             if (hello["authentication"] is JsonObject auth)
             {
                 if (string.IsNullOrEmpty(password))
-                    throw new InvalidOperationException("O OBS pede senha: coloque em settings.json → obs.password");
+                    throw new InvalidOperationException("O OBS pede senha e não achei ela na configuração dele: coloque em settings.json → \"obs\": { \"password\": \"...\" }");
                 var salt = auth["salt"]!.GetValue<string>();
                 var challenge = auth["challenge"]!.GetValue<string>();
                 identify["authentication"] = B64Sha(B64Sha(password + salt) + challenge);

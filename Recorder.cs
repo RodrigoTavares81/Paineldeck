@@ -171,11 +171,13 @@ internal sealed class Recorder : IDisposable
         if (!ObsRunning())
         {
             if (!launch) throw new InvalidOperationException("O OBS está fechado");
+            ObsLocalConfig.EnableServer(); // OBS fechado: liga o servidor WebSocket dele antes de abrir, se estiver desligado
             LaunchObs();
             lock (gate) { startWhenReadyUntil = DateTime.UtcNow.AddSeconds(90); starting = true; state = "connecting"; nextConnect = DateTime.UtcNow.AddSeconds(3); }
             return false;
         }
-        await obs.RequestAsync("GetVersion", null);
+        try { await obs.RequestAsync("GetVersion", null); }
+        catch (Exception ex) { throw new InvalidOperationException(ObsLocalConfig.Explain(ex.Message)); }
         lock (gate) { state = "ok"; needRefresh = true; }
         return true;
     }
@@ -318,7 +320,11 @@ internal sealed class Recorder : IDisposable
                 lock (gate)
                 {
                     state = now < startWhenReadyUntil ? "connecting" : "error"; // abrindo: o servidor demora uns segundos
-                    if (state == "error") error = ex.Message;
+                    if (state == "error")
+                    {
+                        error = ObsLocalConfig.Explain(ex.Message);
+                        if (starting) { starting = false; fail = error; failSeq++; } // abriu o OBS mas ele não respondeu: avisa em vez de sumir
+                    }
                 }
                 return;
             }
