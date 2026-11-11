@@ -13,8 +13,8 @@ internal sealed class Settings
     public string ObsPassword { get; private set; } = "";
     /// <summary>Identidade do monitor do painel ("panelMonitor" no settings.json). null = ainda não escolhido.</summary>
     public MonitorInfo? PanelMonitor { get; private set; }
-    /// <summary>Atalhos globais, nome → teclas. Ex.: "rest" → "ctrl+alt+h"; "record" começa/para a gravação no OBS. "" desliga o atalho.</summary>
-    public Dictionary<string, string> Hotkeys { get; } = new() { ["rest"] = "ctrl+alt+h", ["record"] = "ctrl+alt+g" };
+    /// <summary>Atalhos globais, nome → teclas. Ex.: "rest" → "ctrl+alt+h"; "record" começa/para a gravação no OBS; "replay" liga/salva o replay. "" desliga o atalho.</summary>
+    public Dictionary<string, string> Hotkeys { get; } = new() { ["rest"] = "ctrl+alt+h", ["record"] = "ctrl+alt+g", ["replay"] = "ctrl+alt+r" };
     /// <summary>Cena do painel ("panelScene"): "classic" = wwwroot/index.html, outra = wwwroot/scenes/&lt;nome&gt;/index.html.</summary>
     public string PanelScene { get; private set; } = "classic";
     public string PanelUrl => PanelScene == "classic" ? "https://painel.local/index.html" : $"https://painel.local/scenes/{PanelScene}/index.html";

@@ -521,3 +521,34 @@ body.recording #sky .g1 { background: radial-gradient(closest-side, #4a0d23, rgb
 .r-btn.sm { height: 44px; padding: 0 18px; font-size: 14px; border-radius: 14px; }
 .r-btn.pop { animation: pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.6); }
 #recstage.done .r-ctl .r-btn:not(.back), #recstage.starting .r-ctl .r-btn:not(.stop) { opacity: 0.35; pointer-events: none; }
+
+/* replay (guarda os últimos minutos) e seletor de microfone */
+.rc-replay { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; }
+.rc-replay-btn { position: relative; overflow: hidden; flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 12px; border-radius: 10px;
+  background: rgba(5, 13, 34, 0.55); border: 1px solid var(--line); color: var(--muted); font: 600 12.5px var(--font); cursor: pointer; transition: border-color 0.2s, color 0.2s, background 0.2s; }
+.rc-replay-btn svg { width: 15px; height: 15px; fill: var(--ice-dim); flex-shrink: 0; }
+.rc-replay-btn span { flex: 1; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-replay-btn kbd { font-family: var(--mono); font-size: 9.5px; color: var(--ice); border: 1px solid var(--line-strong); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+.rc-replay-btn:hover { color: var(--text); border-color: var(--line-strong); background: rgba(28, 60, 128, 0.5); }
+.rc-replay-btn:active { transform: scale(0.98); }
+.rc-replay.on .rc-replay-btn { color: var(--text); border-color: rgba(143, 176, 255, 0.45); background: rgba(28, 60, 128, 0.45); }
+.rc-replay.on .rc-replay-btn svg { fill: var(--ice); }
+.rc-replay-off { height: 34px; padding: 0 10px; border-radius: 10px; background: none; border: 1px solid var(--line); color: var(--faint); font: 600 11px var(--font); cursor: pointer; }
+.rc-replay-off:hover { color: var(--red-hot); border-color: rgba(224, 35, 63, 0.5); }
+.rc-sec-head .head-btn + .head-btn { margin-left: 6px; }
+.rc-sec-head .label { margin-right: auto; }
+
+#recpick { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(3, 8, 23, 0.72); }
+#recpick[hidden] { display: none; }
+.rp-box { width: min(520px, 86vw); max-height: 78vh; display: flex; flex-direction: column; padding: 20px; border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--navy-850), var(--navy-950)); border: 1px solid var(--line-strong); box-shadow: 0 30px 80px -20px #000; }
+.rp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.rp-src { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.rp-list { list-style: none; overflow-y: auto; margin: 0 -6px; }
+.rp-list li { display: flex; align-items: center; gap: 12px; padding: 12px 10px; border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text); transition: background 0.15s; }
+.rp-list li:hover { background: rgba(28, 60, 128, 0.45); }
+.rp-list li i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ice-dim); flex-shrink: 0; }
+.rp-list li.cur i { background: var(--ice); border-color: var(--ice); }
+.rp-list li span { flex: 1; min-width: 0; }
+.rp-list li small { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.14em; color: var(--ice); text-transform: uppercase; }
+.rp-list li.none { cursor: default; color: var(--muted); font-weight: 400; }

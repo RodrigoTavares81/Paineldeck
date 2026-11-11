@@ -49,9 +49,10 @@ Quando um pedido chega pelo botão "✨ Pedir ao Claude", o painel está rodando
    - **Gravação:** a coluna da direita da Navy é o cartão GRAVAÇÃO e, gravando, o painel vira a tela cheia de gravação
      (`scenes/navy/rec.js`, CSS no fim do `navy.css`; `"navy": { "coluna": "noticias" }` troca o cartão pelas notícias).
      `status.rec` = `{ obs ("closed" | "connecting" | "ok" | "error"), error, active, paused, starting, ms, bytes, file, path, scene, dir, freeGb,
-     hotkey, tracks: [{ name, source, muted, found, mixer }], markers: [ms], stats: { fps, cpu, skipped, total, lagged }, last, recent }`
+     hotkey, micDevice, replay: { active, seconds, last, hotkey }, failOk, tracks: [{ name, source, muted, found, mixer }], markers: [ms], stats: { fps, cpu, skipped, total, lagged }, last, recent }`
      (e `status.recording` = true/false pro `"state"` de um botão). `Bridge.call("record", { cmd })` com `toggle | start | stop | pause | mark |
-     mute (track) | test | open (path) | history | frame (width → { image } = JPEG da cena do OBS, a prévia do vídeo)`; a ação do deck é `{ "type": "record", "cmd": "toggle" }`. Os níveis de áudio chegam por
+     mute (track) | test | open (path) | history | devices (→ { source, current, items: [{ id, name }] }, os microfones) | device (id) |
+     replay (liga o buffer de repetição do OBS ou, ligado, salva os últimos `gravacao.replay` segundos) | replay-off | frame (width → { image } = JPEG da cena do OBS, a prévia do vídeo)`; a ação do deck é `{ "type": "record", "cmd": "toggle" }`. Os níveis de áudio chegam por
      `Bridge.on("meters", m => ...)` (~15x/s, só gravando ou no teste): `{ ms, paused, l: [pico, média, pico, média] }` em dB.
      Quem fala com o OBS é o `Recorder.cs` (obs-websocket); config em `"gravacao"` no `deck.json`, atalho `"record"` em `hotkeys` do `settings.json`.
      Os canvas da tela de gravação só redesenham quando chega um `meters` (mantém a regra de leve na GPU com o painel parado).

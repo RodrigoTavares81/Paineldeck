@@ -7,8 +7,8 @@
     "url": "ws://127.0.0.1:4455",
     "password": ""
   },
-  // atalhos globais: nome → teclas ("rest" = modo descanso, "record" = começa/para a gravação no OBS; "" desliga)
-  "hotkeys": { "rest": "ctrl+alt+h", "record": "ctrl+alt+g" },
+  // atalhos globais: nome → teclas ("rest" = modo descanso, "record" = começa/para a gravação no OBS, "replay" = liga o replay e salva os últimos minutos; "" desliga)
+  "hotkeys": { "rest": "ctrl+alt+h", "record": "ctrl+alt+g", "replay": "ctrl+alt+r" },
   // FPS do modo jogo (PresentMon em tools\, baixado pelo scripts\ativar-fps.ps1)
   "fps": { "enabled": true, "presentMon": "", "args": "" },
   // se o app der erro grave, abre de novo sozinho (no máximo 3x em 10 min)

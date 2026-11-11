@@ -72,7 +72,8 @@ window.Bridge = (() => {
       return {
         obs: R.closed ? "closed" : "ok", error: null, fail: null, failSeq: 0, active: R.active, paused: R.paused, starting: R.starting,
         ms, bytes: Math.round(ms * 4850), path: R.active ? "D:\\Vídeos\\2026-11-11 14-20-33.mkv" : null, file: R.active ? "2026-11-11 14-20-33.mkv" : null,
-        scene: "PainelDeck · Tela principal", dir: "D:\\Vídeos", freeGb: 84.2, hotkey: "ctrl+alt+g", metering: R.active || Date.now() < R.meterUntil,
+        scene: "PainelDeck · Tela principal", dir: "D:\\Vídeos", freeGb: 84.2, hotkey: "ctrl+alt+g", micDevice: R.mic || "Microfone (HyperX QuadCast)",
+        replay: { active: !!R.replay, seconds: 120, last: null, hotkey: "ctrl+alt+r" }, failOk: !!R.failOk, metering: R.active || Date.now() < R.meterUntil,
         tracks: R.closed ? [{ name: "Microfone", source: "", muted: false, found: false, mixer: [] }, { name: "Sistema", source: "", muted: false, found: false, mixer: [] }]
           : [{ name: "Microfone", source: "Mic/Aux", muted: R.muted[0], found: true, mixer: [1] }, { name: "Sistema", source: "Áudio do desktop", muted: R.muted[1], found: true, mixer: [2] }],
         markers: R.markers, stats: R.active ? { fps: 60, cpu: 3.1, skipped: 0, total: Math.round(ms * 0.06), lagged: 0 } : null, last: R.last,
@@ -242,6 +243,11 @@ window.Bridge = (() => {
       if (cmd === "mark" && R.active) R.markers = [...R.markers, R.ms()];
       if (cmd === "mute") R.muted[args.track] = !R.muted[args.track];
       if (cmd === "test") R.meterUntil = Date.now() + 20000;
+      const mics = [["default", "Padrão"], ["a", "Microfone (HyperX QuadCast)"], ["b", "Microfone (Logitech C920)"], ["c", "Line (Focusrite Scarlett)"]];
+      if (cmd === "devices") return { source: "Mic/Aux", current: R.micId || "a", items: mics.map(([id, name]) => ({ id, name })) };
+      if (cmd === "device") { R.micId = args.id; R.mic = mics.find((m) => m[0] === args.id)?.[1]; R.meterUntil = Date.now() + 20000; }
+      if (cmd === "replay") R.replay = true;
+      if (cmd === "replay-off") R.replay = false;
       window.__previewEmit();
       return last.rec;
     }

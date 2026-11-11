@@ -27,11 +27,11 @@ internal sealed class Recorder : IDisposable
         public readonly List<byte> History = new();
     }
 
-    private sealed record Cfg(string Scene, string ObsPath, (string Name, string Source)[] Tracks);
+    private sealed record Cfg(string Scene, string ObsPath, (string Name, string Source)[] Tracks, int Replay);
 
     private readonly ObsClient obs;
     private readonly Deck deck;
-    private readonly string hotkey;
+    private readonly string hotkey, replayHotkey;
     private readonly object gate = new();
     private readonly CancellationTokenSource stop = new();
     private readonly SemaphoreSlim wake = new(0, 1);
@@ -42,6 +42,11 @@ internal sealed class Recorder : IDisposable
     private string? error;             // por que não está conectado (aparece no cartão)
     private string? fail;              // último comando que deu errado (o painel mostra num aviso quando failSeq muda)
     private int failSeq;
+    private bool failOk;               // o aviso é uma boa notícia ("Replay salvo"), não um erro
+    private string? micDevice;         // nome do dispositivo que a fonte do microfone usa no OBS
+    private bool replayActive;         // buffer de repetição do OBS ligado (guarda os últimos segundos na memória)
+    private int replaySeconds;
+    private string? replayLast;
     private bool active, paused, starting;
     private long baseMs, bytes;        // duração na última leitura do OBS
     private readonly Stopwatch since = new();
@@ -59,6 +64,7 @@ internal sealed class Recorder : IDisposable
     {
         this.deck = deck;
         hotkey = settings.Hotkeys.TryGetValue("record", out var hk) ? hk : "";
+        replayHotkey = settings.Hotkeys.TryGetValue("replay", out var rhk) ? rhk : "";
         obs = new ObsClient(settings.ObsUrl, settings.ObsPassword, SubScenes | SubInputs | SubOutputs | SubMeters);
         obs.Event += OnEvent;
         try { if (File.Exists(DirFile)) dir = File.ReadAllText(DirFile).Trim(); } catch { }
@@ -67,7 +73,8 @@ internal sealed class Recorder : IDisposable
 
     // ---------- comandos ----------
 
-    /// <summary>cmd: toggle | start | stop | pause | mark | mute (track) | test | open (path) | history | frame (width) | status.</summary>
+    /// <summary>cmd: toggle | start | stop | pause | mark | mute (track) | test | open (path) | history | frame (width) | status
+    /// | devices | device (id) | replay | replay-off.</summary>
     public async Task<object?> CommandAsync(string cmd, JsonNode? args = null)
     {
         if (cmd == "frame") return await FrameAsync(args?["width"]?.GetValue<int>() ?? 640); // pedido várias vezes por segundo: erro não vira aviso
@@ -92,6 +99,12 @@ internal sealed class Recorder : IDisposable
                     lock (gate) meterUntil = DateTime.UtcNow.AddSeconds(20);
                     break;
                 case "open": OpenInExplorer(args?["path"]?.GetValue<string>()); break;
+                case "devices": return await DevicesAsync();
+                case "device": await SetDeviceAsync(args?["id"]?.GetValue<string>() ?? ""); break;
+                case "replay": await ReplayAsync(); break;
+                case "replay-off":
+                    if (obs.IsConnected) { try { await obs.RequestAsync("StopReplayBuffer", null); } catch { } lock (gate) replayActive = false; }
+                    break;
                 case "history": return History();
                 case "status": break;
                 default: throw new ArgumentException($"Comando de gravação desconhecido: '{cmd}'");
@@ -131,17 +144,114 @@ internal sealed class Recorder : IDisposable
 
     private bool IsActive { get { lock (gate) return active || starting; } }
 
-    private async Task StartAsync()
+    /// <summary>Cena no ar, pasta de gravação válida e áudio na faixa 1: o que vale tanto pra gravar quanto pro replay.</summary>
+    private async Task<bool> PrepareAsync(List<string> notes)
     {
-        if (!await EnsureObsAsync(launch: true)) return; // o OBS está abrindo: grava assim que ele responder
         var cfg = ReadCfg();
-        lock (gate) { starting = true; path = null; }
         if (cfg.Scene.Equals("auto", StringComparison.OrdinalIgnoreCase)) await EnsureAutoSceneAsync();
         else if (cfg.Scene != "") await obs.RequestAsync("SetCurrentProgramScene", new JsonObject { ["sceneName"] = cfg.Scene });
         await RefreshAsync();
-        var notes = new List<string>();
-        if (!await EnsureRecordDirAsync(notes)) { lock (gate) starting = false; return; }
+        if (!await EnsureRecordDirAsync(notes)) return false;
         await PrepareAudioAsync(notes);
+        return true;
+    }
+
+    // ---------- microfone: qual dispositivo ----------
+
+    /// <summary>A fonte do microfone no OBS; se não existir nenhuma, cria uma na cena que está no ar.</summary>
+    private async Task<string> MicSourceAsync()
+    {
+        await EnsureObsAsync(launch: false);
+        await RefreshAsync();
+        Track? t;
+        lock (gate) t = tracks.FirstOrDefault();
+        if (t is { Found: true, Source.Length: > 0 }) return t.Source;
+        var sceneNow = (string?)(await obs.RequestAsync("GetCurrentProgramScene", null))?["currentProgramSceneName"]
+            ?? throw new InvalidOperationException("O OBS não tem nenhuma cena");
+        await obs.RequestAsync("CreateInput", new JsonObject
+        {
+            ["sceneName"] = sceneNow, ["inputName"] = AudioKinds[0].Name, ["inputKind"] = AudioKinds[0].Kind,
+            ["inputSettings"] = new JsonObject { ["device_id"] = "default" }, ["sceneItemEnabled"] = true,
+        });
+        await RefreshAsync();
+        return AudioKinds[0].Name;
+    }
+
+    /// <summary>{ source, current, items: [{ id, name }] }: os microfones que o OBS enxerga e qual está em uso.</summary>
+    private async Task<object> DevicesAsync()
+    {
+        var source = await MicSourceAsync();
+        var current = (string?)(await obs.RequestAsync("GetInputSettings", new JsonObject { ["inputName"] = source }))?["inputSettings"]?["device_id"] ?? "default";
+        var items = (await obs.RequestAsync("GetInputPropertiesListPropertyItems",
+            new JsonObject { ["inputName"] = source, ["propertyName"] = "device_id" }))?["propertyItems"] as JsonArray;
+        var list = (items ?? new JsonArray())
+            .Where(i => (string?)i?["itemValue"] is { Length: > 0 } && i?["itemEnabled"]?.GetValue<bool>() != false)
+            .Select(i => (object)new { id = (string)i!["itemValue"]!, name = (string?)i["itemName"] ?? (string)i["itemValue"]! })
+            .ToList();
+        return new { source, current, items = list };
+    }
+
+    private async Task SetDeviceAsync(string id)
+    {
+        if (id == "") throw new ArgumentException("Faltou dizer qual microfone");
+        var source = await MicSourceAsync();
+        await obs.RequestAsync("SetInputSettings", new JsonObject
+        {
+            ["inputName"] = source, ["inputSettings"] = new JsonObject { ["device_id"] = id }, ["overlay"] = true,
+        });
+        var name = await DeviceNameAsync(source);
+        lock (gate) { micDevice = name; micHeard = false; micWarned = false; meterUntil = DateTime.UtcNow.AddSeconds(20); } // mostra o nível por 20 s pra conferir
+    }
+
+    // ---------- replay: salva os últimos segundos ----------
+
+    /// <summary>
+    /// Buffer de repetição do OBS. Desligado: liga (a partir daí o OBS guarda os últimos N segundos na memória).
+    /// Ligado: salva esses segundos num arquivo na pasta das gravações. A duração vem de "gravacao": { "replay": 120 }.
+    /// </summary>
+    private async Task ReplayAsync()
+    {
+        if (!obs.IsConnected && !ObsRunning())
+        {
+            ObsLocalConfig.EnableServer();
+            LaunchObs();
+            lock (gate) { state = "connecting"; nextConnect = DateTime.UtcNow.AddSeconds(3); }
+            throw new InvalidOperationException("Abri o OBS. Aperte de novo em alguns segundos pra ligar o replay.");
+        }
+        await EnsureObsAsync(launch: false);
+        bool on;
+        try { on = (await obs.RequestAsync("GetReplayBufferStatus", null))?["outputActive"]?.GetValue<bool>() == true; }
+        catch
+        {
+            // o OBS só cria o buffer se ele estiver ligado nas configurações quando o OBS abre
+            foreach (var cat in new[] { "SimpleOutput", "AdvOut" })
+                try { await obs.RequestAsync("SetProfileParameter", new JsonObject { ["parameterCategory"] = cat, ["parameterName"] = "RecRB", ["parameterValue"] = "true" }); } catch { }
+            throw new InvalidOperationException("O Buffer de Repetição estava desligado no OBS. Liguei nas configurações dele: feche e abra o OBS uma vez e aperte de novo.");
+        }
+        if (on)
+        {
+            await obs.RequestAsync("SaveReplayBuffer", null); // o nome do arquivo chega pelo evento ReplayBufferSaved
+            return;
+        }
+        var cfg = ReadCfg();
+        var notes = new List<string>();
+        if (!await PrepareAsync(notes)) return;
+        foreach (var cat in new[] { "SimpleOutput", "AdvOut" }) // a duração é lida pelo OBS na hora de ligar o buffer
+            try { await obs.RequestAsync("SetProfileParameter", new JsonObject { ["parameterCategory"] = cat, ["parameterName"] = "RecRBTime", ["parameterValue"] = cfg.Replay.ToString() }); } catch { }
+        await obs.RequestAsync("StartReplayBuffer", null);
+        lock (gate) { replayActive = true; replaySeconds = cfg.Replay; }
+        notes.Insert(0, $"Replay ligado: aperte de novo pra salvar os últimos {Span(cfg.Replay)}.");
+        Note(string.Join(" ", notes));
+    }
+
+    private static string Span(int seconds) => seconds % 60 == 0 ? $"{seconds / 60} min" : seconds > 60 ? $"{seconds / 60} min {seconds % 60} s" : $"{seconds} s";
+
+    private async Task StartAsync()
+    {
+        if (!await EnsureObsAsync(launch: true)) return; // o OBS está abrindo: grava assim que ele responder
+        lock (gate) { starting = true; path = null; }
+        var notes = new List<string>();
+        if (!await PrepareAsync(notes)) { lock (gate) starting = false; return; }
         lock (gate) { startedAt = DateTime.UtcNow; micHeard = false; micWarned = false; }
         await obs.RequestAsync("StartRecord", null);
         if (notes.Count > 0) Fail(string.Join(" ", notes));
@@ -454,7 +564,7 @@ internal sealed class Recorder : IDisposable
                     if (state == "error")
                     {
                         error = ObsLocalConfig.Explain(ex.Message);
-                        if (starting) { starting = false; fail = error; failSeq++; } // abriu o OBS mas ele não respondeu: avisa em vez de sumir
+                        if (starting) { starting = false; fail = error; failOk = false; failSeq++; } // abriu o OBS mas ele não respondeu: avisa em vez de sumir
                     }
                 }
                 return;
@@ -485,7 +595,7 @@ internal sealed class Recorder : IDisposable
             {
                 // pediu pra gravar e o OBS não começou (ele costuma mostrar o motivo numa janela dele)
                 starting = false; startedAt = default;
-                fail = "O OBS não começou a gravar. Veja se ele mostrou algum aviso na janela dele."; failSeq++;
+                fail = "O OBS não começou a gravar. Veja se ele mostrou algum aviso na janela dele."; failOk = false; failSeq++;
             }
         }
         if (begin)
@@ -554,6 +664,9 @@ internal sealed class Recorder : IDisposable
             }
             fresh.Add(t);
         }
+        string? micDev = null; bool rb = false;
+        if (fresh.Count > 0 && fresh[0].Found) micDev = await DeviceNameAsync(fresh[0].Source);
+        try { rb = (await obs.RequestAsync("GetReplayBufferStatus", null))?["outputActive"]?.GetValue<bool>() == true; } catch { }
         string? sceneNow = null, recDir = null;
         try { sceneNow = (string?)(await obs.RequestAsync("GetCurrentProgramScene", null))?["currentProgramSceneName"]; } catch { }
         try { recDir = (string?)(await obs.RequestAsync("GetRecordDirectory", null))?["recordDirectory"]; } catch { }
@@ -563,6 +676,9 @@ internal sealed class Recorder : IDisposable
             for (int i = 0; i < fresh.Count && i < tracks.Length; i++)
                 if (tracks[i].Source == fresh[i].Source || tracks[i].Source == "") fresh[i].History.AddRange(tracks[i].History);
             tracks = fresh.ToArray();
+            micDevice = string.IsNullOrEmpty(micDev) ? null : micDev;
+            replayActive = rb;
+            if (rb && replaySeconds == 0) replaySeconds = cfg.Replay;
             scene = sceneNow ?? scene;
             if (recDir != null && recDir != dir)
             {
@@ -643,6 +759,18 @@ internal sealed class Recorder : IDisposable
                     lock (gate) path = p2;
                 Wake();
                 break;
+            case "ReplayBufferStateChanged":
+                lock (gate) replayActive = d["outputActive"]?.GetValue<bool>() == true;
+                break;
+            case "ReplayBufferSaved":
+                var saved = (string?)d["savedReplayPath"];
+                lock (gate) { replayLast = saved; nextSlow = default; }
+                Note("Replay salvo" + (string.IsNullOrEmpty(saved) ? "" : ": " + Path.GetFileName(saved)));
+                Wake();
+                break;
+            case "InputSettingsChanged":
+                lock (gate) needRefresh = true;
+                break;
             case "InputMuteStateChanged":
                 lock (gate)
                     foreach (var t in tracks)
@@ -684,7 +812,8 @@ internal sealed class Recorder : IDisposable
         catch { /* pasta sem acesso */ }
     }
 
-    private void Fail(string message) { lock (gate) { fail = message; failSeq++; } }
+    private void Fail(string message) { lock (gate) { fail = message; failOk = false; failSeq++; } }
+    private void Note(string message) { lock (gate) { fail = message; failOk = true; failSeq++; } }
 
     private static string Key(Cfg c) => c.Scene + "|" + c.ObsPath + "|" + string.Join("|", c.Tracks.Select(t => t.Name + "=" + t.Source));
 
@@ -700,7 +829,8 @@ internal sealed class Recorder : IDisposable
         for (int i = 0; i < list.Count; i++)
             if (list[i].Item1 == "") list[i] = (i == 0 ? "Microfone" : i == 1 ? "Sistema" : $"Faixa {i + 1}", list[i].Item2);
         // sem "cena" no deck: "auto" (cria a cena do monitor principal); "cena": "" = grava o que estiver no OBS
-        return new Cfg(g?["cena"] == null ? "auto" : S(g["cena"]), S(g?["obs"]), list.Take(4).ToArray());
+        int replay = g?["replay"] is JsonValue rv && rv.TryGetValue<double>(out var rs) ? (int)Math.Clamp(rs, 5, 1800) : 120;
+        return new Cfg(g?["cena"] == null ? "auto" : S(g["cena"]), S(g?["obs"]), list.Take(4).ToArray(), replay);
     }
 
     // ---------- o que o painel lê ----------
@@ -716,6 +846,7 @@ internal sealed class Recorder : IDisposable
                 error,
                 fail,
                 failSeq,
+                failOk,
                 active,
                 paused,
                 starting,
@@ -727,6 +858,8 @@ internal sealed class Recorder : IDisposable
                 dir,
                 freeGb,
                 hotkey,
+                micDevice,
+                replay = new { active = replayActive, seconds = replayActive && replaySeconds > 0 ? replaySeconds : ReadCfg().Replay, last = replayLast, hotkey = replayHotkey },
                 metering = Streaming(),
                 tracks = tracks.Select(t => new { name = t.Name, source = t.Source, muted = t.Muted, found = t.Found, mixer = t.Mixer }).ToArray(),
                 markers = markers.ToArray(),
