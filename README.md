@@ -103,8 +103,10 @@ Dá pra **pausar**, **marcar** um ponto (vira capítulo no arquivo quando o OBS 
 faixa tocando nela e **parar** (dois toques, pra um esbarrão não acabar com a gravação). **Ver painel** volta pro painel
 normal sem parar de gravar (fica um **REC 12:47** no topo). Se a gravação começar pelo próprio OBS, a tela entra do mesmo jeito.
 
-- Precisa do **OBS 28+** com **Ferramentas → Configurações do servidor WebSocket → Ativar** (se tiver senha, ela vai em
-  `"obs": { "password": "..." }` no `settings.json`). Com o OBS fechado, o painel abre ele minimizado e começa a gravar.
+- Precisa do **OBS 28+** com o servidor WebSocket ligado (**Ferramentas → Configurações do servidor WebSocket → Ativar**).
+  O painel lê a porta e a senha direto da configuração do OBS, então não precisa copiar nada pro `settings.json`
+  (`"obs": { "url", "password" }` só pra um OBS em outro endereço). Com o OBS fechado, o painel **liga o servidor
+  sozinho**, abre o OBS minimizado e começa a gravar; com o OBS já aberto e o servidor desligado, ele avisa o que marcar.
 - `"gravacao"` no `deck.json`: `"cena": "auto"` cria no OBS a cena **PainelDeck · Tela principal** (captura do monitor
   principal, ajustada à tela do OBS) e grava ela; `""` grava a cena que estiver no OBS; ou o nome de uma cena sua.
   `"faixas"` diz quais fontes de áudio aparecem (vazio = Mic/Aux e Áudio do desktop). `"previa"` são os quadros por
