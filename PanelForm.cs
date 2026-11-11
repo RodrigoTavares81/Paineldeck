@@ -19,8 +19,7 @@ public sealed class PanelForm : Form
     private readonly Mic mic = new();
     private readonly Media media = new();
     private readonly News news = new();
-    private readonly ClaudeSessions sessions;
-    private readonly Voice voice;
+    private readonly Recorder recorder;
     private readonly Playtime playtime;
     private readonly Fps fps;
     private readonly GameMode game;
@@ -29,6 +28,8 @@ public sealed class PanelForm : Form
     private readonly NotifyIcon tray = new();
     private readonly System.Windows.Forms.Timer statusTimer = new() { Interval = 1000 };
     private readonly System.Windows.Forms.Timer focusTimer = new() { Interval = 200 };
+    // níveis de áudio da gravação: ~15x por segundo, e só manda alguma coisa enquanto grava (ou no teste de áudio)
+    private readonly System.Windows.Forms.Timer meterTimer = new() { Interval = 66 };
     private readonly System.Windows.Forms.Timer reloadDebounce = new() { Interval = 300 };
     private readonly System.Windows.Forms.Timer deckDebounce = new() { Interval = 250 };
     // plugar/desplugar/ligar o monitor dispara vários eventos seguidos: espera acalmar antes de reposicionar
@@ -48,14 +49,13 @@ public sealed class PanelForm : Form
         this.settings = settings;
         deck = new Deck(settings.Root);
         deck.Reload();
-        runner = new ActionRunner(settings, deck, mic, EnsureTargetFocused);
+        recorder = new Recorder(settings, deck);
+        runner = new ActionRunner(settings, deck, mic, recorder, EnsureTargetFocused);
         playtime = new Playtime(settings.Root);
-        sessions = new ClaudeSessions(settings.Root);
-        voice = new Voice(settings.Root);
         fps = new Fps(settings);
         game = new GameMode(deck, playtime, fps, a => runner.RunAsync(a));
         updater = new Updater(settings, () => { quitting = true; Close(); });
-        Crash.BeforeExit += () => { voice.Dispose(); sys.Dispose(); fps.Dispose(); playtime.Dispose(); tray.Visible = false; };
+        Crash.BeforeExit += () => { sys.Dispose(); fps.Dispose(); playtime.Dispose(); tray.Visible = false; };
 
         Text = "PainelDeck";
         FormBorderStyle = FormBorderStyle.None;
@@ -74,6 +74,7 @@ public sealed class PanelForm : Form
         hotkeys.Pressed += name =>
         {
             if (name == "rest") rest?.Start();
+            if (name == "record") recorder.Fire("toggle"); // grava/para mesmo se a página do painel estiver recarregando
             Post(new { type = "hotkey", name });
         };
         if (hotkeys.Failed.Count > 0)
@@ -82,6 +83,7 @@ public sealed class PanelForm : Form
         focusTimer.Tick += (_, _) => TrackForeground();
         focusTimer.Start();
         statusTimer.Tick += (_, _) => PushStatus();
+        meterTimer.Tick += (_, _) => { if (recorder.Meters() is { } m) Post(m); };
         reloadDebounce.Tick += async (_, _) => { reloadDebounce.Stop(); await ReloadAsync(); };
         deckDebounce.Tick += (_, _) => { deckDebounce.Stop(); deck.Reload(); PushDeck(); };
 
@@ -90,7 +92,7 @@ public sealed class PanelForm : Form
         {
             Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: soltar senão vaza
             hotkeys.Dispose();
-            rest?.CloseNow(); media.Dispose();
+            rest?.CloseNow(); media.Dispose(); recorder.Dispose();
             game.Dispose(); fps.Dispose(); playtime.Dispose(); updater.Dispose();
             tray.Visible = false; tray.Dispose(); watcher?.Dispose(); deckWatcher?.Dispose();
         };
@@ -228,6 +230,7 @@ public sealed class PanelForm : Form
         cw.Navigate(settings.PanelUrl);
 
         statusTimer.Start();
+        meterTimer.Start();
         StartWatcher();
     }
 
@@ -284,37 +287,12 @@ public sealed class PanelForm : Form
                     Post(new { type = "result", id, ok = true, result = await news.GetAsync(deck.Snapshot(), force) });
                     return;
                 }
-                if (method == "claudeSessions") // lê os .jsonl do Claude Code: fora da thread da janela
+                if (method == "record") // { cmd: "toggle" | "start" | "stop" | "pause" | "mark" | "mute" | "test" | "open" | "history" }
                 {
-                    var snap = deck.Snapshot();
-                    Post(new { type = "result", id, ok = true, result = await Task.Run(() => sessions.List(snap)) });
+                    var cmd = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("cmd", out var c) ? c.GetString() ?? "status" : "status";
+                    var node = args.ValueKind == JsonValueKind.Object ? System.Text.Json.Nodes.JsonNode.Parse(args.GetRawText()) : null;
+                    Post(new { type = "result", id, ok = true, result = await recorder.CommandAsync(cmd, node) });
                     return;
-                }
-                if (method == "claudeSend") // { id, text }: roda `claude --resume` em segundo plano e volta na hora
-                {
-                    var r = sessions.Send(deck.Snapshot(), args.GetProperty("id").GetString() ?? "", args.GetProperty("text").GetString() ?? "");
-                    Post(new { type = "result", id, ok = true, result = r });
-                    return;
-                }
-                if (method == "claudeNew") // { cwd, text }: sessão nova do Claude Code nessa pasta, em segundo plano
-                {
-                    var r = sessions.Start(deck.Snapshot(), args.GetProperty("cwd").GetString() ?? "", args.GetProperty("text").GetString() ?? "");
-                    Post(new { type = "result", id, ok = true, result = r });
-                    return;
-                }
-                if (method == "voice") // { cmd: "start" | "stop" | "cancel" | "state" }: grava o microfone e vira texto
-                {
-                    var cmd = args.ValueKind == JsonValueKind.Object && args.TryGetProperty("cmd", out var c) ? c.GetString() : "state";
-                    object r = cmd switch
-                    {
-                        "start" => await voice.StartAsync(deck.Snapshot()),
-                        "stop" => await voice.StopAsync(deck.Snapshot()),
-                        "cancel" => Cancel(),
-                        _ => voice.State(),
-                    };
-                    Post(new { type = "result", id, ok = true, result = r });
-                    return;
-                    object Cancel() { voice.Cancel(); return voice.State(); }
                 }
                 Post(new { type = "result", id, ok = true, result = HandleCall(method, args) });
                 return;
@@ -413,6 +391,8 @@ public sealed class PanelForm : Form
                 : null,
             micMuted = mic.IsMuted(),
             obs = runner.ObsConnected,
+            recording = recorder.IsRecording, // pro "state" dos botões do clássico
+            rec = recorder.Status(), // modo gravação: { obs, active, paused, ms, bytes, tracks, markers, stats, last, recent... }
             game = game.Status(),
             update = updater.Status(),
         });

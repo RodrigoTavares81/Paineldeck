@@ -3,8 +3,9 @@
 //  Lê o status do PC (Bridge.onStatus) e o deck (Bridge.onDeck):
 //   - férias: pega o widget "ferias" do deck (inicio/volta) ou deck.navy.ferias
 //   - jogos: seção "games" do deck (capas grandes; "roda" abre a roda de jogos)
-//   - coluna da direita: sessões do Claude Code (sessions.js) ou, com "navy": { "coluna": "noticias" },
-//     notícias por Bridge.call("news") (o C# busca os feeds de "news" no deck.json)
+//   - coluna da direita: gravação (rec.js: botão de gravar no OBS, faixas de áudio, últimas gravações) ou,
+//     com "navy": { "coluna": "noticias" }, notícias por Bridge.call("news") (o C# busca os feeds de "news" no deck.json)
+//   - gravando: o rec.js troca o painel inteiro pela tela de gravação (status.rec)
 //   - telemetria: CPU/GPU (com temperatura), RAM, VRAM + dados do PC (status.sys: tempo ligado, rede, disco, espaço)
 //   - modo jogo: status.game (o C# acha o jogo aberto) → FPS/sessão/temperaturas no lugar das férias
 //     e o selo JOGANDO na capa do jogo
@@ -230,6 +231,7 @@
   function flash(el, cls) { el.classList.remove("ok", "err"); void el.offsetWidth; el.classList.add(cls); }
 
   // ações que só existem no JS (roda de jogos, gaveta de macros, pedir ao Claude, modo descanso)
+  // (gravar é { "type": "record" }: quem faz é o C#, e a tela de gravação entra sozinha pelo status)
   function runSpecial(action) {
     const t = action.type;
     const hooks = {
@@ -395,7 +397,7 @@
     if (!newsHover && pages() > 1) { page = (page + 1) % pages(); renderPage(true); }
   }, 25000);
   setInterval(() => { if (newsOn()) loadNews(false); }, 10 * 60000);
-  // a coluna da direita é das sessões do Claude, a não ser que o deck peça as notícias
+  // a coluna da direita é da gravação, a não ser que o deck peça as notícias
   const newsOn = () => /^not/i.test(String(deckNow?.navy?.coluna || ""));
   let newsLoaded = false;
   function applyColumn() {
@@ -530,7 +532,7 @@
     setUpdate(s.update);
   });
 
-  window.Navy = { toast, ripple }; // usado pelo sessions.js (coluna das sessões do Claude)
+  window.Navy = { toast, ripple, get deck() { return deckNow; } }; // usado pelo rec.js (gravação)
 
   const loop = () => {
     const now = new Date();

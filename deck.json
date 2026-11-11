@@ -25,6 +25,7 @@
 //   { "type": "script", "file": "ola.ps1", "args": "", "hidden": true }  script da pasta /scripts (.ps1 .bat .cmd .py .js)
 //   { "type": "mic",    "mode": "toggle" }                  toggle | mute | unmute (mic padrão do Windows)
 //   { "type": "obs",    "request": "ToggleRecord", "data": {} }   qualquer request do obs-websocket v5
+//   { "type": "record" }                                    começa/para a gravação no OBS (veja MODO GRAVAÇÃO lá embaixo)
 //   { "type": "games" }                                     abre a roda de jogos (lista "games" lá embaixo)
 //   { "type": "macros" }                                    abre a gaveta com todas as macros de "macros"
 //
@@ -49,15 +50,22 @@
 //
 //  "news": notícias da cena Navy (opcional) → { "title": "IA", "feeds": ["https://...rss"], "max": 18, "refreshMinutes": 20 }
 //  (cabem 9 de uma vez; com mais, a lista troca de página sozinha; RSS ou Atom; sem essa seção usa o Google News sobre IA)
-//  "navy": { "animacao": 10, "coluna": "claude" }
+//  "navy": { "animacao": 10, "coluna": "gravacao" }
 //   animacao = quadros por segundo do mar das férias na Navy (0 = tudo parado, gasta ainda menos GPU)
-//   coluna   = o que vai na coluna da direita: "claude" (sessões do Claude Code do PC, padrão) ou "noticias"
-//  "claude": sessões do Claude Code na Navy (opcional) →
-//   { "hours": 72, "max": 14, "permissionMode": "acceptEdits", "allowedTools": "",
-//     "folders": ["C:\\Users\\rodri\\Projetos\\x"], "defaultFolder": "...",   (pastas do "+ nova"; as das sessões recentes entram sozinhas)
-//     "whisper": { "exe": "C:\\...\\whisper-cli.exe", "model": "C:\\...\\ggml-large-v3-turbo-q5_0.bin", "language": "pt" } }
-//   hours/max = quais sessões aparecem; permissionMode = o que o Claude pode fazer sozinho quando você manda mensagem pelo painel;
-//   áudio: rode scripts/instalar-whisper.ps1 uma vez (sem Whisper usa o ditado do Windows, que precisa de internet)
+//   coluna   = o que vai na coluna da direita: "gravacao" (botão de gravar, faixas de áudio e últimas gravações, padrão) ou "noticias"
+//
+//  MODO GRAVAÇÃO (Navy): Ctrl+Alt+G (atalho "record" em "hotkeys" no settings.json), o botão GRAVAR do painel ou a ação
+//  { "type": "record" } mandam o OBS gravar; o painel vira a tela de gravação (tempo, linha do tempo com as duas faixas
+//  de áudio, níveis ao vivo, pausar/marcar/parar). Precisa do OBS 28+ com Ferramentas → Configurações do servidor WebSocket ligado
+//  (se tiver senha, ela vai em "obs" no settings.json). Com o OBS fechado, o painel abre ele sozinho.
+//  "gravacao": { "cena": "auto", "faixas": [ { "nome": "Microfone", "fonte": "" }, { "nome": "Sistema", "fonte": "" } ], "obs": "", "voltar": 12, "previa": 5 }
+//   cena   = "auto": o painel cria no OBS a cena "PainelDeck · Tela principal" (captura do monitor principal) e grava ela;
+//            "" grava a cena que estiver no OBS; ou o nome de uma cena sua
+//   faixas = as fontes de áudio mostradas (até 4). "fonte" vazia = o Mic/Aux (1ª) e o Áudio do desktop (2ª) do OBS;
+//            senão, o nome da fonte igualzinho no OBS
+//   obs    = caminho do obs64.exe se não estiver no lugar padrão; voltar = segundos mostrando o resumo depois de parar
+//   previa = quadros por segundo da prévia do vídeo na tela de gravação (padrão 5, máx. 15; 0 = sem vídeo, mais leve)
+//   Outros comandos da ação: { "type": "record", "cmd": "start" | "stop" | "pause" | "mark" }
 // =====================================================================
 {
   "grid": {
@@ -163,6 +171,15 @@
       "name": "Principal"
     }
     ],
+  "gravacao": {
+    "cena": "auto",
+    "faixas": [
+      { "nome": "Microfone", "fonte": "" },
+      { "nome": "Sistema", "fonte": "" }
+    ],
+    "voltar": 12,
+    "previa": 5
+  },
   "gameMode": {
     "enabled": true,
     "detectUnknown": true,

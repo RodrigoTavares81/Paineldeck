@@ -12,13 +12,15 @@ internal sealed class ActionRunner
     private readonly Action ensureTargetFocused;
     private readonly ObsClient obs;
     private readonly Deck deck;
+    private readonly Recorder recorder;
     private const int MaxMacroDepth = 8;
 
-    public ActionRunner(Settings settings, Deck deck, Mic mic, Action ensureTargetFocused)
+    public ActionRunner(Settings settings, Deck deck, Mic mic, Recorder recorder, Action ensureTargetFocused)
     {
         this.settings = settings;
         this.deck = deck;
         this.mic = mic;
+        this.recorder = recorder;
         this.ensureTargetFocused = ensureTargetFocused;
         obs = new ObsClient(settings.ObsUrl, settings.ObsPassword);
     }
@@ -85,6 +87,9 @@ internal sealed class ActionRunner
             case "obs":
                 JsonNode? data = a.TryGetProperty("data", out var dataEl) ? JsonNode.Parse(dataEl.GetRawText()) : null;
                 return await obs.RequestAsync(Str(a, "request"), data);
+
+            case "record": // modo gravação: toggle | start | stop | pause | mark
+                return await recorder.CommandAsync(Opt(a, "cmd") ?? "toggle");
 
             default:
                 throw new InvalidOperationException($"Tipo de ação desconhecido: '{type}'");

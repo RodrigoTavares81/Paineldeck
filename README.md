@@ -92,10 +92,32 @@ As janelas não roubam o foco do jogo. **Qualquer mouse ou tecla acorda** (a luz
 desplugar um monitor também fecha. O painel continua funcionando durante o descanso.
 O atalho muda em `"hotkeys": { "rest": "ctrl+alt+h" }` no `settings.json`. Simulador: `wwwroot/scenes/rest/preview.html`.
 
+## ⏺️ Modo gravação (Navy)
+
+**Ctrl+Alt+G**, o botão **GRAVAR** da coluna da direita ou um botão com a ação `{ "type": "record" }` mandam o **OBS**
+gravar o monitor principal, e o painel inteiro vira a **tela de gravação**: a **prévia ao vivo** do que o OBS está gravando,
+tempo correndo, tamanho do arquivo, quanto ainda cabe no disco, quadros perdidos, uma **linha do tempo que vai crescendo**
+com miniaturas do vídeo e as ondas das duas faixas de áudio
+(microfone e som do sistema; o que estoura aparece em vermelho) e os **níveis ao vivo** de cada uma.
+Dá pra **pausar**, **marcar** um ponto (vira capítulo no arquivo quando o OBS grava em MP4/MOV híbrido), **mutar** uma
+faixa tocando nela e **parar** (dois toques, pra um esbarrão não acabar com a gravação). **Ver painel** volta pro painel
+normal sem parar de gravar (fica um **REC 12:47** no topo). Se a gravação começar pelo próprio OBS, a tela entra do mesmo jeito.
+
+- Precisa do **OBS 28+** com **Ferramentas → Configurações do servidor WebSocket → Ativar** (se tiver senha, ela vai em
+  `"obs": { "password": "..." }` no `settings.json`). Com o OBS fechado, o painel abre ele minimizado e começa a gravar.
+- `"gravacao"` no `deck.json`: `"cena": "auto"` cria no OBS a cena **PainelDeck · Tela principal** (captura do monitor
+  principal, ajustada à tela do OBS) e grava ela; `""` grava a cena que estiver no OBS; ou o nome de uma cena sua.
+  `"faixas"` diz quais fontes de áudio aparecem (vazio = Mic/Aux e Áudio do desktop). `"previa"` são os quadros por
+  segundo da prévia do vídeo (padrão 5; `0` desliga). As **duas faixas separadas no
+  arquivo** são configuradas no próprio OBS (Saída → Gravação → Faixas de áudio, e Editar → Propriedades avançadas de áudio).
+- O atalho muda em `"hotkeys": { "record": "ctrl+alt+g" }` no `settings.json` (`""` desliga).
+- O botão **testar** mostra os níveis por 20 s sem gravar. Arquivos: `Recorder.cs`, `wwwroot/scenes/navy/rec.js`.
+  Preview: `.../wwwroot/scenes/navy/?gravando` (ou `?gravando=4500`, `?gravando=pausa`).
+
 ## Ações disponíveis
 
 `keys` (atalhos), `type` (digitar texto), `media`, `macro` (sequência com delays), `run` (abrir programa),
-`url`, `script` (.ps1/.bat/.py/.js da pasta `scripts/`), `mic` (mute do mic padrão), `obs`, e as que só abrem
+`url`, `script` (.ps1/.bat/.py/.js da pasta `scripts/`), `mic` (mute do mic padrão), `obs`, `record` (gravar a tela no OBS), e as que só abrem
 coisas no painel: `claude`, `games` (roda de jogos) e `macros` (gaveta de macros). Na cena Navy também tem `rest` (modo descanso).
 
 ## OBS

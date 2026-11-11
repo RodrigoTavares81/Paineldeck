@@ -39,6 +39,7 @@ window.Editor = (() => {
     script: "📜 Rodar script",
     mic: "🎙️ Microfone",
     obs: "🎬 OBS",
+    record: "⏺️ Gravar a tela (OBS)",
     claude: "✨ Pedir ao Claude (abre a caixa)",
     games: "🎮 Roda de jogos",
     macros: "🔁 Gaveta de macros",
@@ -47,7 +48,7 @@ window.Editor = (() => {
     keys: { keys: "" }, type: { text: "" }, media: { key: "playpause" }, macro: { steps: [] },
     run: { path: "" }, url: { url: "https://" }, script: { file: "" }, mic: { mode: "toggle" },
     obs: { request: "ToggleRecord" },
-    claude: {}, games: {}, macros: {},
+    record: {}, claude: {}, games: {}, macros: {},
   };
   const MEDIA_KEYS = { playpause: "Play / Pause", next: "Próxima", prev: "Anterior", stop: "Parar", volup: "Volume +", voldown: "Volume −", volmute: "Mudo (som)" };
   const MIC_MODES = { toggle: "Alternar", mute: "Mutar", unmute: "Desmutar" };
@@ -221,6 +222,9 @@ window.Editor = (() => {
         }
         case "mic":
           box.append(row("Modo", select(MIC_MODES, a.mode || "toggle", (v) => { a.mode = v; changed(); })));
+          break;
+        case "record":
+          box.append(hint("Começa a gravar o monitor principal no OBS; apertar de novo para e salva. Na cena Navy o painel vira a tela de gravação. Dica: \"state\": \"recording\" deixa o botão aceso enquanto grava."));
           break;
         case "claude":
           box.append(hint("Apertar esse botão abre a caixa pra você pedir ao Claude Code um item novo ou qualquer mudança no painel."));
