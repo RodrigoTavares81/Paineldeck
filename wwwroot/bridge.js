@@ -211,6 +211,24 @@ window.Bridge = (() => {
     }
     if (method === "record") {
       const R = window.__previewRec, cmd = args.cmd;
+      if (cmd === "frame") { // quadro inventado (um "jogo" que muda com o tempo), só pra ver a prévia e as miniaturas
+        const t = (args.at ?? R.ms()) / 1000, w = args.width || 640, h = Math.round(w / 2.389), k = w / 640;
+        const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+        const c = cv.getContext("2d"); c.scale(k, k);
+        const hue = (200 + t * 0.9) % 360, g = c.createLinearGradient(0, 0, 0, 268);
+        g.addColorStop(0, `hsl(${hue} 60% 14%)`); g.addColorStop(0.6, `hsl(${(hue + 40) % 360} 55% 30%)`); g.addColorStop(1, `hsl(${(hue + 70) % 360} 50% 12%)`);
+        c.fillStyle = g; c.fillRect(0, 0, 640, 268);
+        c.fillStyle = `hsl(${(hue + 150) % 360} 80% 62%)`; c.beginPath(); c.arc(320 + 240 * Math.sin(t / 37), 96 + 30 * Math.cos(t / 23), 26, 0, 7); c.fill();
+        for (let l = 0; l < 3; l++) {
+          c.fillStyle = `hsla(${(hue + 20 * l) % 360} 45% ${20 - l * 5}% / 1)`; c.beginPath(); c.moveTo(0, 268);
+          for (let x = 0; x <= 640; x += 16) c.lineTo(x, 150 + l * 30 + 26 * Math.sin(x / (60 + l * 25) + t * (0.05 + l * 0.04) + l * 2));
+          c.lineTo(640, 268); c.fill();
+        }
+        c.fillStyle = "rgba(0,0,0,.45)"; c.fillRect(14, 232, 180, 22); c.fillStyle = "#e0233f"; c.fillRect(17, 235, 174 * (0.55 + 0.4 * Math.sin(t / 9)), 16);
+        c.fillStyle = "rgba(255,255,255,.85)"; c.font = "600 13px Segoe UI, sans-serif"; c.fillText("PRÉVIA DE EXEMPLO", 462, 250);
+        c.strokeStyle = "rgba(255,255,255,.7)"; c.lineWidth = 1.5; c.beginPath(); c.moveTo(312, 134); c.lineTo(328, 134); c.moveTo(320, 126); c.lineTo(320, 142); c.stroke();
+        return { image: cv.toDataURL("image/jpeg", 0.7), error: null };
+      }
       if (cmd === "history") {
         const n = Math.floor(R.ms() / 250), enc = (tr) => { let b = ""; for (let i = 0; i < n; i++) b += String.fromCharCode(Math.round(Math.max(0, Math.min(1, (R.level(tr, i / 4) + 60) / 60)) * 255)); return btoa(b); };
         return { bucketMs: 250, ms: R.ms(), tracks: [enc(0), enc(1)], markers: R.markers };

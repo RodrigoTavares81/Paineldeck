@@ -215,6 +215,13 @@
     </header>
 
     <section class="card r-hero" style="--i:1">
+      <!-- prévia ao vivo do que o OBS está gravando (Bridge.call("record", { cmd: "frame" }), algumas vezes por segundo) -->
+      <div class="r-prev" id="r-prev">
+        <img id="r-prev-img" alt="">
+        <div class="r-prev-none" id="r-prev-none">esperando a imagem do OBS…</div>
+        <span class="r-prev-tag"><i class="rec"></i><span id="r-prev-tag">AO VIVO</span></span>
+      </div>
+      <div class="r-side">
       <div class="r-clock">
         <div class="r-time"><span id="r-t-h">0</span><i>:</i><span id="r-t-m">00</span><i>:</i><span id="r-t-s">00</span><small id="r-t-d">.0</small></div>
         <div class="r-file"><svg viewBox="0 0 24 24"><path d="M4 5h11v4l5-3v12l-5-3v4H4Z"/></svg><span id="r-file">—</span></div>
@@ -224,6 +231,7 @@
         <div class="stat" id="r-st-free"><span class="k">ESPAÇO LIVRE</span><b class="v" id="r-free">--</b><span class="s" id="r-fits">&nbsp;</span></div>
         <div class="stat" id="r-st-video"><span class="k">VÍDEO</span><b class="v" id="r-fps">--</b><span class="s" id="r-drop">&nbsp;</span></div>
         <div class="stat" id="r-st-pc"><span class="k">PC</span><b class="v" id="r-pc">--</b><span class="s" id="r-pc-s">&nbsp;</span></div>
+      </div>
       </div>
     </section>
 

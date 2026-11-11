@@ -424,7 +424,7 @@ body.col-news .reccard { display: none; }
   transform: translate(-50%, -50%) scale(var(--fit, 1));
   padding: 18px; display: none; gap: 14px;
   grid-template-columns: 1fr 236px;
-  grid-template-rows: 54px 150px 1fr 64px;
+  grid-template-rows: 54px 236px 1fr 64px;
   grid-template-areas: "top top" "hero hero" "tl vu" "ctl vu";
 }
 body.recording #stage { display: none; }
@@ -440,28 +440,43 @@ body.recording #sky .g1 { background: radial-gradient(closest-side, #4a0d23, rgb
 #recstage.paused .r-badge .rec, #recstage.done .r-badge .rec, #recstage.starting .r-badge .rec { background: var(--ice); opacity: 1 !important; }
 .r-top .chip span { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.r-hero { grid-area: hero; display: flex; align-items: center; gap: 22px; padding: 0 22px 0 30px;
+.r-hero { grid-area: hero; display: flex; align-items: stretch; gap: 22px; padding: 14px 20px 14px 14px;
   background: linear-gradient(100deg, rgba(200, 16, 46, 0.2), rgba(20, 45, 99, 0.62) 38%, rgba(11, 26, 61, 0.66)); }
-.r-clock { flex-shrink: 0; min-width: 420px; }
-.r-time { display: flex; align-items: baseline; font-size: 104px; font-weight: 800; line-height: 0.9; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; text-shadow: 0 10px 40px rgba(3, 8, 23, 0.6); }
-.r-time i { font-style: normal; color: var(--red-hot); margin: 0 2px; position: relative; top: -8px; }
-.r-time small { font-size: 40px; font-weight: 700; color: var(--muted); letter-spacing: -0.02em; margin-left: 6px; }
+/* prévia do vídeo: a largura acompanha o formato da imagem (ultrawide ou 16:9) */
+.r-prev { position: relative; flex: 0 0 auto; height: 100%; aspect-ratio: var(--ar, 2.389); max-width: 560px; min-width: 300px; border-radius: 13px; overflow: hidden;
+  background: #02050f; border: 1px solid var(--line-strong); box-shadow: 0 0 0 1px rgba(3, 8, 23, 0.6), 0 18px 40px -22px #000, 0 0 40px -18px var(--red-glow); }
+.r-prev img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: none; }
+.r-prev.has img { display: block; }
+.r-prev-none { position: absolute; inset: 0; display: grid; place-items: center; padding: 0 20px; text-align: center; font-size: 13px; line-height: 1.45; color: var(--muted);
+  background: repeating-linear-gradient(135deg, rgba(143, 176, 255, 0.04) 0 10px, transparent 10px 20px); }
+.r-prev.has .r-prev-none { display: none; }
+.r-prev-tag { position: absolute; left: 10px; top: 10px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.18em; color: #fff; background: rgba(3, 8, 23, 0.72); border: 1px solid rgba(224, 35, 63, 0.6); }
+#recstage.paused .r-prev-tag, #recstage.done .r-prev-tag { border-color: var(--line-strong); color: var(--ice); }
+#recstage.paused .r-prev-tag .rec, #recstage.done .r-prev-tag .rec { background: var(--ice); box-shadow: none; opacity: 1 !important; }
+#recstage.done .r-prev img { opacity: 0.55; }
+.r-side { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 4px 0 0 4px; }
+.r-clock { flex-shrink: 0; }
+.r-time { display: flex; align-items: baseline; font-size: 84px; font-weight: 800; line-height: 0.9; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; text-shadow: 0 10px 40px rgba(3, 8, 23, 0.6); }
+.r-time i { font-style: normal; color: var(--red-hot); margin: 0 2px; position: relative; top: -6px; }
+.r-time small { font-size: 34px; font-weight: 700; color: var(--muted); letter-spacing: -0.02em; margin-left: 6px; }
 #recstage.paused .r-time, #recstage.starting .r-time { color: var(--ice-dim); }
 .r-file { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.06em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 440px; }
 .r-file svg { width: 13px; height: 13px; fill: var(--ice-dim); flex-shrink: 0; }
-.r-stats { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; height: 104px; }
-.r-stats .stat { padding: 10px 14px; gap: 4px; }
-.r-stats .stat .v { font-size: 24px; }
+.r-stats { flex: 0 0 auto; min-width: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; height: 84px; }
+.r-stats .stat { padding: 7px 12px; gap: 2px; }
+.r-stats .stat .v { font-size: 21px; }
 .r-stats .stat.bad .v { color: var(--red-hot); }
 
 .r-tl { grid-area: tl; display: flex; flex-direction: column; }
 .r-scale { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; color: var(--faint); text-transform: uppercase; }
 .r-body { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: 124px 1fr; margin: 4px 14px 12px 20px; }
 .r-heads { display: flex; flex-direction: column; padding-top: 28px; gap: 8px; }
-.r-head { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding-right: 12px; text-align: left; border-radius: 12px; overflow: hidden; }
-.r-head .n { font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+.r-head { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; padding-right: 12px; text-align: left; border-radius: 12px; overflow: hidden; }
+.r-head .n { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
 .r-head .n i { width: 9px; height: 9px; border-radius: 3px; background: var(--c); flex-shrink: 0; }
 .r-head .src { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.04em; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-head.video { flex: 0 0 50px; gap: 3px; }
 .r-head .tag { align-self: flex-start; font-family: var(--mono); font-size: 9px; letter-spacing: 0.16em; color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; }
 .r-head.muted .tag { color: #fff; background: var(--red); border-color: var(--red-hot); }
 .r-body canvas, .r-vus canvas { width: 100%; height: 100%; display: block; }

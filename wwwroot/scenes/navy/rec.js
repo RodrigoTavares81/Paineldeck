@@ -7,10 +7,11 @@
 //       last: { name, path, ms, bytes, markers, at }, recent: [{ name, path, bytes, at }] }
 //   - Bridge.on("meters") (~15x por segundo, só gravando ou no teste de áudio): { ms, paused, l: [pico, média, pico, média] } em dB
 //   - Bridge.call("record", { cmd }) → toggle | start | stop | pause | mark | mute (track) | test | open (path) | history
+//       | frame (width) → { image (data URL JPEG da cena do OBS), error }: a prévia do vídeo, pedida aqui algumas vezes por segundo
 //  Aqui: o cartão GRAVAÇÃO da coluna da direita e a tela cheia que entra sozinha enquanto grava
-//  (linha do tempo que cresce com as ondas das duas faixas + medidores ao vivo).
+//  (prévia ao vivo do vídeo, linha do tempo que cresce com miniaturas do vídeo e as ondas das duas faixas, medidores ao vivo).
 //  Leve na GPU: os canvas só são redesenhados quando chega um "meters" (nada roda com o painel parado).
-//  Config: "gravacao" no deck.json → { "cena", "faixas": [{ "nome", "fonte" }], "obs", "voltar" }.
+//  Config: "gravacao" no deck.json → { "cena", "faixas": [{ "nome", "fonte" }], "obs", "voltar", "previa" (quadros/s, 0 = sem vídeo) }.
 // =====================================================================
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
@@ -55,6 +56,7 @@
   let win = 60;              // segundos que cabem na linha do tempo agora (cresce junto com a gravação)
   let wasActive = false, showing = false, minimized = false, doneUntil = 0, histFor = false;
   let failSeq = null, quiet = 0, stopAsk = 0, trackKey = "", bytesAt = null, rate = 0;
+  let thumbs = [], thumbEvery = 2000, ratio = 2.389; // miniaturas do vídeo pra linha do tempo: { ms, cv }
 
   const cfg = () => window.Navy.deck?.gravacao || {};
   const toByte = (db) => Math.round(Math.max(0, Math.min(1, (db - FLOOR) / -FLOOR)) * 255);
@@ -133,7 +135,7 @@
 
   // ---------- tela cheia ----------
   function renderHeads(r) {
-    $("#r-heads").innerHTML = r.tracks.map((t, i) => `
+    $("#r-heads").innerHTML = `<div class="r-head video" style="--c:#e8eeff"><span class="n"><i></i>Vídeo</span><span class="src" id="r-video-src">${esc(r.scene || "cena do OBS")}</span></div>` + r.tracks.map((t, i) => `
       <button class="r-head${t.muted ? " muted" : ""}" data-i="${i}" style="--c:${COLORS[i % COLORS.length]}" title="Toque pra mutar/desmutar no OBS">
         <span class="n"><i></i>${esc(t.name)}</span>
         <span class="src">${esc(t.found ? t.source : "sem fonte")}</span>
@@ -158,6 +160,9 @@
     stageEl.classList.toggle("done", done);
     setText($("#r-state"), done ? "SALVO" : r.starting && !r.active ? (r.obs === "ok" ? "COMEÇANDO" : "ABRINDO O OBS") : r.paused ? "PAUSADO" : "GRAVANDO");
     setText($("#r-scene-name"), r.scene || "—");
+    const vs = $("#r-video-src");
+    if (vs) setText(vs, r.scene || "cena do OBS");
+    setText($("#r-prev-tag"), done ? "ÚLTIMO QUADRO" : r.paused ? "PAUSADO" : "AO VIVO");
     $("#r-game").hidden = !s.game;
     if (s.game) setText($("#r-game-name"), s.game.name);
     const now = new Date();
@@ -228,6 +233,21 @@
         for (let i = 0; i < bin.length; i++) a[i] = Math.max(a[i] || 0, bin.charCodeAt(i));
       });
       draw();
+      if (Bridge.preview) { // só no preview do navegador: inventa as miniaturas do que "já foi gravado"
+        const step = Math.max(2000, h.ms / 150);
+        for (let t = 0; t < h.ms - step; t += step) {
+          const im = new Image();
+          im.src = (await Bridge.call("record", { cmd: "frame", at: t, width: 176 })).image;
+          await im.decode();
+          const cv = document.createElement("canvas");
+          cv.width = 176; cv.height = Math.round(176 / ratio);
+          cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+          thumbs.push({ ms: t, cv });
+        }
+        thumbs.sort((a, b) => a.ms - b.ms);
+        thumbEvery = step;
+        draw();
+      }
     } catch { /* app antigo: a linha do tempo começa de agora */ }
   }
 
@@ -237,6 +257,7 @@
     const on = !!r.active;
     if (on && !wasActive) { // começou (ou o painel abriu com a gravação rolando)
       hist = r.tracks.map(() => []);
+      thumbs = []; thumbEvery = 2000;
       win = 60; rate = 0; bytesAt = null; stopAsk = 0; doneUntil = 0;
       curMs = r.ms; curAt = performance.now();
       loadHistory();
@@ -268,6 +289,40 @@
     if (full) { renderScene(r, s); if (!on || r.paused) draw(); }
   }
   const sync = () => { if (rec) apply(rec); };
+
+  // ---------- prévia do vídeo ----------
+  // Pede um quadro pro OBS, espera chegar e só então marca o próximo (nunca acumula pedidos).
+  // "gravacao": { "previa": 5 } = quadros por segundo (0 desliga; máx. 15). Só roda com a tela de gravação aberta.
+  const prevEl = $("#r-prev"), prevImg = $("#r-prev-img");
+  const prevFps = () => { const v = Number(cfg().previa ?? 5); return isNaN(v) ? 5 : Math.max(0, Math.min(15, v)); };
+  function addThumb(ms) {
+    const last = thumbs[thumbs.length - 1];
+    if (last && ms - last.ms < thumbEvery) return;
+    const cv = document.createElement("canvas");
+    cv.width = 176; cv.height = Math.round(176 / ratio);
+    cv.getContext("2d").drawImage(prevImg, 0, 0, cv.width, cv.height);
+    thumbs.push({ ms, cv });
+    if (thumbs.length > 320) { thumbs = thumbs.filter((_, i) => i % 2 === 0); thumbEvery *= 2; } // gravação longa: guarda uma a cada tanto
+  }
+  prevImg.addEventListener("load", () => {
+    if (!prevImg.naturalWidth) return;
+    ratio = Math.max(1.2, Math.min(3.6, prevImg.naturalWidth / prevImg.naturalHeight));
+    prevEl.style.setProperty("--ar", ratio.toFixed(3));
+    prevEl.classList.add("has");
+    if (rec?.active && !rec.paused && prevImg.dataset.ms) addThumb(Number(prevImg.dataset.ms));
+  });
+  async function pollFrame() {
+    const fps = prevFps(), t0 = performance.now();
+    const on = fps > 0 && rec?.active && rec.obs === "ok" && body.classList.contains("recording") && !document.hidden;
+    if (!on) { if (fps <= 0) prevEl.classList.remove("has"), setText($("#r-prev-none"), "prévia desligada (\"previa\": 0)"); setTimeout(pollFrame, 700); return; }
+    try {
+      const r = await Bridge.call("record", { cmd: "frame", width: 640 });
+      if (r?.image) { prevImg.dataset.ms = String(Math.round(curMs)); prevImg.src = r.image; }
+      else if (!prevEl.classList.contains("has")) setText($("#r-prev-none"), r?.error ? `sem imagem: ${r.error}` : "esperando a imagem do OBS…");
+    } catch { /* tenta de novo */ }
+    setTimeout(pollFrame, Math.max(40, 1000 / fps - (performance.now() - t0)));
+  }
+  pollFrame();
 
   // ---------- níveis ao vivo ----------
   Bridge.on("meters", (m) => {
@@ -346,9 +401,9 @@
     if (Math.abs(target - win) < target * 0.005) win = target; else win += (target - win) * 0.22;
     setText($("#r-scale"), `janela de ${target >= 3600 ? `${target / 3600} h` : `${target / 60} min`}`);
 
-    const RUL = 28, GAP = 8, PADR = 10, tw = w - PADR;
+    const RUL = 28, GAP = 8, PADR = 10, VH = 50, tw = w - PADR; // VH = altura da faixa do vídeo (igual ao .r-head.video)
     const X = (t) => (t / win) * tw;
-    const laneH = (h - RUL - GAP * (n - 1)) / n;
+    const laneH = (h - RUL - VH - GAP * n) / n;
     const xNow = Math.min(tw, X(sec));
 
     // régua
@@ -363,10 +418,27 @@
       if (x < tw - 18 && Math.abs(x - xNow) > 46) ctx.fillText(tickLabel(t), t === 0 ? 2 : x, 9);
     }
 
-    // faixas
+    // vídeo: tira de miniaturas que vai sendo revelada junto com a agulha
+    ctx.fillStyle = "rgba(5,13,34,.45)"; rr(ctx, 0, RUL, w, VH, 10); ctx.fill();
+    ctx.save();
+    rr(ctx, 0, RUL, w, VH, 10); ctx.clip();
+    ctx.beginPath(); ctx.rect(0, RUL, xNow, VH); ctx.clip();
+    ctx.fillStyle = "rgba(143,176,255,.08)"; ctx.fillRect(0, RUL, xNow, VH);
+    const cell = VH * ratio, half = thumbEvery / 2;
+    for (let i = 0, k = 0; i * cell < xNow; i++) {
+      const t = ((i * cell) / tw) * win * 1000; // instante do começo desse quadrinho
+      while (k < thumbs.length - 1 && thumbs[k].ms < t - half) k++;
+      const th = thumbs[k];
+      if (th && Math.abs(th.ms - t) <= Math.max(thumbEvery * 1.5, (cell / tw) * win * 1000)) ctx.drawImage(th.cv, i * cell, RUL, cell, VH);
+      ctx.fillStyle = "rgba(3,8,23,.7)"; ctx.fillRect(i * cell - 1, RUL, 2, VH);
+    }
+    ctx.restore();
+    ctx.strokeStyle = "rgba(143,176,255,.16)"; ctx.lineWidth = 1; rr(ctx, 0.5, RUL + 0.5, w - 1, VH - 1, 10); ctx.stroke();
+
+    // faixas de áudio
     const PITCH = 3, BARW = 2;
     for (let tr = 0; tr < n; tr++) {
-      const y0 = RUL + tr * (laneH + GAP), cy = y0 + laneH / 2, amp = laneH / 2 - 7;
+      const y0 = RUL + VH + GAP + tr * (laneH + GAP), cy = y0 + laneH / 2, amp = laneH / 2 - 7;
       const color = COLORS[tr % COLORS.length], muted = rec.tracks[tr]?.muted;
       ctx.fillStyle = "rgba(5,13,34,.45)"; rr(ctx, 0, y0, w, laneH, 12); ctx.fill();
       ctx.strokeStyle = "rgba(143,176,255,.12)"; ctx.lineWidth = 1; rr(ctx, 0.5, y0 + 0.5, w - 1, laneH - 1, 12); ctx.stroke();

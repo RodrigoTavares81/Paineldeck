@@ -66,9 +66,10 @@ internal sealed class Recorder : IDisposable
 
     // ---------- comandos ----------
 
-    /// <summary>cmd: toggle | start | stop | pause | mark | mute (track) | test | open (path) | history | status.</summary>
+    /// <summary>cmd: toggle | start | stop | pause | mark | mute (track) | test | open (path) | history | frame (width) | status.</summary>
     public async Task<object?> CommandAsync(string cmd, JsonNode? args = null)
     {
+        if (cmd == "frame") return await FrameAsync(args?["width"]?.GetValue<int>() ?? 640); // pedido várias vezes por segundo: erro não vira aviso
         try
         {
             switch (cmd)
@@ -108,6 +109,25 @@ internal sealed class Recorder : IDisposable
     public void Fire(string cmd) => _ = Task.Run(async () => { try { await CommandAsync(cmd); } catch { } });
 
     public bool IsRecording { get { lock (gate) return active; } }
+    /// <summary>Prévia do vídeo: um JPEG pequeno da cena que o OBS está gravando (data URL), pra tela de gravação.</summary>
+    private async Task<object> FrameAsync(int width)
+    {
+        try
+        {
+            if (!obs.IsConnected) return new { image = (string?)null, error = (string?)"OBS fechado" };
+            string? src;
+            lock (gate) src = scene;
+            src ??= (string?)(await obs.RequestAsync("GetCurrentProgramScene", null))?["currentProgramSceneName"];
+            var r = await obs.RequestAsync("GetSourceScreenshot", new JsonObject
+            {
+                ["sourceName"] = src, ["imageFormat"] = "jpg",
+                ["imageWidth"] = Math.Clamp(width, 160, 1280), ["imageCompressionQuality"] = 70,
+            });
+            return new { image = (string?)r?["imageData"], error = (string?)null };
+        }
+        catch (Exception ex) { return new { image = (string?)null, error = (string?)ex.Message }; }
+    }
+
     private bool IsActive { get { lock (gate) return active || starting; } }
 
     private async Task StartAsync()
