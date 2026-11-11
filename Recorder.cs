@@ -50,7 +50,8 @@ internal sealed class Recorder : IDisposable
     private JsonObject? stats, last;
     private List<object> recent = new();
     private double? freeGb;
-    private DateTime meterUntil, startWhenReadyUntil, nextConnect, nextSlow;
+    private DateTime meterUntil, startWhenReadyUntil, nextConnect, nextSlow, startedAt;
+    private bool micHeard, micWarned;  // chegou algum som do microfone nesta gravação / já avisei que não chegou
     private bool needRefresh = true;
     private int step;
 
@@ -138,8 +139,94 @@ internal sealed class Recorder : IDisposable
         if (cfg.Scene.Equals("auto", StringComparison.OrdinalIgnoreCase)) await EnsureAutoSceneAsync();
         else if (cfg.Scene != "") await obs.RequestAsync("SetCurrentProgramScene", new JsonObject { ["sceneName"] = cfg.Scene });
         await RefreshAsync();
+        var notes = new List<string>();
+        if (!await EnsureRecordDirAsync(notes)) { lock (gate) starting = false; return; }
+        await PrepareAudioAsync(notes);
+        lock (gate) { startedAt = DateTime.UtcNow; micHeard = false; micWarned = false; }
         await obs.RequestAsync("StartRecord", null);
+        if (notes.Count > 0) Fail(string.Join(" ", notes));
         Wake();
+    }
+
+    /// <summary>
+    /// O OBS abre um aviso ("Caminho de arquivo inválido") e não grava quando a pasta de gravação dele está vazia ou
+    /// não existe mais. Antes de gravar: cria a pasta se der; se não der (disco que sumiu), passa a gravar em Vídeos\OBS.
+    /// </summary>
+    private async Task<bool> EnsureRecordDirAsync(List<string> notes)
+    {
+        string? d = null;
+        try { d = (string?)(await obs.RequestAsync("GetRecordDirectory", null))?["recordDirectory"]; }
+        catch { return true; } // OBS antigo sem esse pedido: deixa ele decidir
+        d = d?.Trim();
+        if (!string.IsNullOrEmpty(d))
+        {
+            if (Directory.Exists(d)) return true;
+            try { if (Path.IsPathRooted(d)) { Directory.CreateDirectory(d); return true; } } catch { /* disco/pasta inacessível */ }
+        }
+        var videos = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+        if (string.IsNullOrEmpty(videos)) videos = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Videos");
+        var fallback = Path.Combine(videos, "OBS");
+        try
+        {
+            Directory.CreateDirectory(fallback);
+            await obs.RequestAsync("SetRecordDirectory", new JsonObject { ["recordDirectory"] = fallback });
+        }
+        catch
+        {
+            Fail("A pasta de gravação do OBS " + (string.IsNullOrEmpty(d) ? "está vazia" : $"não existe ({d})")
+               + ". Escolha uma pasta em OBS → Configurações → Saída → Gravação.");
+            return false;
+        }
+        lock (gate)
+        {
+            dir = fallback; nextSlow = default;
+            try { Directory.CreateDirectory(Path.GetDirectoryName(DirFile)!); File.WriteAllText(DirFile, fallback); } catch { }
+        }
+        notes.Add((string.IsNullOrEmpty(d) ? "O OBS estava sem pasta de gravação" : $"A pasta de gravação do OBS não existe ({d})") + $": passei a gravar em {fallback}.");
+        return true;
+    }
+
+    /// <summary>
+    /// Microfone e som do sistema têm que estar na faixa 1 do arquivo (a única que o modo simples do OBS grava e a que
+    /// os players tocam). Avisa se o microfone está mudo no OBS.
+    /// </summary>
+    private async Task PrepareAudioAsync(List<string> notes)
+    {
+        Track[] ts;
+        lock (gate) ts = tracks.Take(2).ToArray();
+        bool changed = false;
+        for (int i = 0; i < ts.Length; i++)
+        {
+            var t = ts[i];
+            if (!t.Found || t.Source == "")
+            {
+                if (i == 0) notes.Add("Não achei nenhum microfone no OBS: confira OBS → Configurações → Áudio → Mic/Aux.");
+                continue;
+            }
+            if (!t.Mixer.Contains(1))
+                try
+                {
+                    await obs.RequestAsync("SetInputAudioTracks", new JsonObject { ["inputName"] = t.Source, ["inputAudioTracks"] = new JsonObject { ["1"] = true } });
+                    changed = true;
+                }
+                catch { }
+            if (i == 0 && t.Muted) notes.Add($"O microfone ({t.Source}) está mudo no OBS: toque nele na tela de gravação pra ligar.");
+        }
+        if (changed) await RefreshAsync();
+    }
+
+    /// <summary>Nome do dispositivo que uma fonte de captura de áudio usa (pra dizer qual trocar quando não chega som).</summary>
+    private async Task<string> DeviceNameAsync(string source)
+    {
+        try
+        {
+            var id = (string?)(await obs.RequestAsync("GetInputSettings", new JsonObject { ["inputName"] = source }))?["inputSettings"]?["device_id"] ?? "default";
+            var items = (await obs.RequestAsync("GetInputPropertiesListPropertyItems",
+                new JsonObject { ["inputName"] = source, ["propertyName"] = "device_id" }))?["propertyItems"] as JsonArray;
+            var name = (string?)items?.FirstOrDefault(i => (string?)i?["itemValue"] == id)?["itemName"];
+            return name ?? (id == "default" ? "padrão do Windows" : id);
+        }
+        catch { return ""; }
     }
 
     private async Task StopAsync()
@@ -394,12 +481,29 @@ internal sealed class Recorder : IDisposable
             bytes = (long)(st?["outputBytes"]?.GetValue<double>() ?? 0);
             if (isActive && !paused) since.Restart(); else since.Reset();
             if (!isActive && now < startWhenReadyUntil) { startWhenReadyUntil = default; begin = true; }
+            else if (!isActive && starting && startedAt != default && now > startedAt.AddSeconds(8))
+            {
+                // pediu pra gravar e o OBS não começou (ele costuma mostrar o motivo numa janela dele)
+                starting = false; startedAt = default;
+                fail = "O OBS não começou a gravar. Veja se ele mostrou algum aviso na janela dele."; failSeq++;
+            }
         }
         if (begin)
         {
             try { await StartAsync(); }
             catch (Exception ex) { lock (gate) starting = false; Fail(ex.Message); }
             return;
+        }
+
+        string? silent = null;
+        lock (gate)
+            if (isActive && !paused && !micHeard && !micWarned && NowMs() > 8000 && tracks.Length > 0 && tracks[0].Found && !tracks[0].Muted)
+            { micWarned = true; silent = tracks[0].Source; }
+        if (silent != null)
+        {
+            var dev = await DeviceNameAsync(silent);
+            Fail($"Ainda não chegou som nenhum do microfone \"{silent}\"" + (dev != "" ? $" (dispositivo: {dev})" : "")
+               + ". Se você já falou, troque o dispositivo em OBS → Configurações → Áudio → Mic/Aux.");
         }
 
         if (isActive && step % 2 == 0)
@@ -473,6 +577,7 @@ internal sealed class Recorder : IDisposable
     private void Begin() // com o gate
     {
         foreach (var t in tracks) { t.History.Clear(); t.Peak = t.Mag = -100; }
+        micHeard = false; micWarned = false;
         markers.Clear();
         stats = null; last = null;
         nextSlow = default;
@@ -519,6 +624,7 @@ internal sealed class Recorder : IDisposable
                                     peak = Math.Max(peak, c[1]!.GetValue<double>());
                                 }
                         double pdb = t.Muted ? -100 : Db(peak), mdb = t.Muted ? -100 : Db(mag);
+                        if (rec && pdb > -70 && ReferenceEquals(t, tracks[0])) micHeard = true;
                         t.Peak = Math.Max(t.Peak, pdb);
                         t.Mag = Math.Max(t.Mag, mdb);
                         if (idx < 0) continue;
