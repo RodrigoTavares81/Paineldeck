@@ -10,6 +10,7 @@ namespace PainelDeck;
 /// Cliente mínimo do obs-websocket v5 (já vem no OBS 28+).
 /// Qualquer request da documentação funciona: SetCurrentProgramScene, ToggleRecord,
 /// ToggleStream, ToggleInputMute, SaveReplayBuffer...
+/// Com "subscriptions" diferente de 0 também recebe eventos do OBS (gravação começou/parou, níveis de áudio...).
 /// </summary>
 internal sealed class ObsClient
 {
@@ -19,7 +20,12 @@ internal sealed class ObsClient
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonNode?>> pending = new();
     private TaskCompletionSource<JsonObject>? helloTcs, identifiedTcs;
 
-    public ObsClient(string url, string password) { this.url = url; this.password = password; }
+    private readonly int subscriptions;
+
+    /// <summary>Evento do OBS (tipo, dados). Chega na thread de leitura do socket: não demore aqui.</summary>
+    public event Action<string, JsonObject?>? Event;
+
+    public ObsClient(string url, string password, int subscriptions = 0) { this.url = url; this.password = password; this.subscriptions = subscriptions; }
 
     public bool IsConnected => ws?.State == WebSocketState.Open;
 
@@ -75,7 +81,7 @@ internal sealed class ObsClient
             _ = Task.Run(() => ReceiveLoop(socket));
 
             var hello = await WithTimeout(helloTcs.Task, 3000, "OBS não mandou Hello");
-            var identify = new JsonObject { ["rpcVersion"] = 1, ["eventSubscriptions"] = 0 };
+            var identify = new JsonObject { ["rpcVersion"] = 1, ["eventSubscriptions"] = subscriptions };
 
             if (hello["authentication"] is JsonObject auth)
             {
@@ -117,6 +123,10 @@ internal sealed class ObsClient
                 {
                     case 0: helloTcs?.TrySetResult(d ?? new JsonObject()); break;
                     case 2: identifiedTcs?.TrySetResult(d ?? new JsonObject()); break;
+                    case 5:
+                        try { Event?.Invoke(d?["eventType"]?.GetValue<string>() ?? "", d?["eventData"] as JsonObject); }
+                        catch { /* quem escuta que se vire: um erro lá não derruba a conexão */ }
+                        break;
                     case 7:
                         var id = d?["requestId"]?.GetValue<string>();
                         if (id != null && pending.TryRemove(id, out var tcs))
@@ -139,6 +149,12 @@ internal sealed class ObsClient
                 if (pending.TryRemove(kv.Key, out var t))
                     t.TrySetException(new InvalidOperationException("Conexão com o OBS caiu"));
         }
+    }
+
+    /// <summary>Fecha a conexão (a próxima chamada conecta de novo).</summary>
+    public void Close()
+    {
+        try { ws?.Abort(); } catch { }
     }
 
     private async Task SendAsync(JsonObject msg)

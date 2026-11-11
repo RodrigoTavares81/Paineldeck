@@ -23,6 +23,7 @@ internal sealed class HotKeys : NativeWindow, IDisposable
         int id = 1;
         foreach (var (name, combo) in map)
         {
+            if (string.IsNullOrWhiteSpace(combo)) continue; // "" = atalho desligado
             try
             {
                 var (mods, vk) = Parse(combo);

@@ -11,7 +11,7 @@ Quando um pedido chega pelo botão "✨ Pedir ao Claude", o painel está rodando
    - Botão: `{ "icon": "🎧", "label": "Discord", "action": {...}, "color": "#5865f2" }`
    - Widget: `{ "widget": "nome", ...opções, "x": 40, "y": 0, "w": 20, "h": 33.3 }`
    - Trocar de página: `{ "icon": "🎬", "label": "OBS", "page": "OBS" }`
-   - Ações: `keys`, `type`, `media`, `macro` (`steps` ou `ref` pra `"macros"`), `run`, `url`, `script`, `mic`, `obs`,
+   - Ações: `keys`, `type`, `media`, `macro` (`steps` ou `ref` pra `"macros"`), `run`, `url`, `script`, `mic`, `obs`, `record` (gravar no OBS),
      e as que só abrem coisas no painel: `claude`, `games` (roda de jogos), `macros` (gaveta com todas as macros).
    - **Layout livre:** página com `"layout": "free"` → cada item tem `"x"`, `"y"`, `"w"`, `"h"` em **% da tela** (0–100,
      `x + w ≤ 100`, `y + h ≤ 100`) e `"z"` opcional (maior fica por cima). Ache um espaço vazio olhando os x/y/w/h dos
@@ -46,12 +46,15 @@ Quando um pedido chega pelo botão "✨ Pedir ao Claude", o painel está rodando
      `{ title, items: [{ title, source, url, published }], updated, error }`. Quem busca é o C# (os feeds não liberam CORS),
      com cache e atualização em segundo plano. Os feeds ficam na seção raiz opcional `"news"` do `deck.json`:
      `{ "title": "IA", "feeds": ["https://...rss"], "max": 8, "refreshMinutes": 20 }` (sem ela: Google News sobre IA em PT-BR).
-   - **Sessões do Claude:** a coluna da direita da Navy mostra as sessões do Claude Code do PC (`scenes/navy/sessions.js`;
-     `"navy": { "coluna": "noticias" }` volta as notícias). `Bridge.call("claudeSessions")` → `{ items: [{ id, title, project, cwd,
-     branch, updated, state ("working" | "waiting" | "idle"), last, lastRole, recent: [{ role, text }], sending, error }], error }`;
-     `Bridge.call("claudeSend", { id, text })` roda `claude --resume` em segundo plano; `Bridge.call("claudeNew", { cwd, text })` → `{ id }`
-     abre sessão nova (botão "+ nova"; pastas em `folders` da resposta de `claudeSessions`); áudio: `Bridge.call("voice", { cmd: "start" | "state" | "stop" | "cancel" })`
-     (o `stop` devolve `{ text }`; Whisper local em `whisper/` via `scripts/instalar-whisper.ps1`, senão ditado do Windows). Config em `"claude"` no `deck.json`.
+   - **Gravação:** a coluna da direita da Navy é o cartão GRAVAÇÃO e, gravando, o painel vira a tela cheia de gravação
+     (`scenes/navy/rec.js`, CSS no fim do `navy.css`; `"navy": { "coluna": "noticias" }` troca o cartão pelas notícias).
+     `status.rec` = `{ obs ("closed" | "connecting" | "ok" | "error"), error, active, paused, starting, ms, bytes, file, path, scene, dir, freeGb,
+     hotkey, tracks: [{ name, source, muted, found, mixer }], markers: [ms], stats: { fps, cpu, skipped, total, lagged }, last, recent }`
+     (e `status.recording` = true/false pro `"state"` de um botão). `Bridge.call("record", { cmd })` com `toggle | start | stop | pause | mark |
+     mute (track) | test | open (path) | history`; a ação do deck é `{ "type": "record", "cmd": "toggle" }`. Os níveis de áudio chegam por
+     `Bridge.on("meters", m => ...)` (~15x/s, só gravando ou no teste): `{ ms, paused, l: [pico, média, pico, média] }` em dB.
+     Quem fala com o OBS é o `Recorder.cs` (obs-websocket); config em `"gravacao"` no `deck.json`, atalho `"record"` em `hotkeys` do `settings.json`.
+     Os canvas da tela de gravação só redesenham quando chega um `meters` (mantém a regra de leve na GPU com o painel parado).
    - **Modo jogo:** o C# acha o jogo aberto sozinho e manda `status.game` = `{ name, image, exe, known, since, sessionSec,
      todaySec, idle, fps, fpsLow, fpsAvg, fpsInfo }` (ou `null`). Na Navy ele troca as férias pela tela do jogo (FPS, sessão, temperaturas);
      no clássico existe o widget `"jogo"` e o `"page"` do jogo. Por jogo em `"games"`: `"process"`, `"macros"` (botões da tela do jogo),

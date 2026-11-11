@@ -28,6 +28,8 @@
         <!-- modo jogo: "JOGANDO · 1h12" (some quando não tem jogo aberto) -->
         <div class="chip playing" id="chip-play" hidden><i class="rec"></i><span>JOGANDO</span><b id="chip-play-time">0min</b></div>
         <!-- atualização: aparece quando tem versão nova no GitHub (2 toques pra instalar) -->
+        <!-- gravação minimizada: "REC 12:47" (toque volta pra tela de gravação) -->
+        <button class="chip action recchip" id="chip-rec" hidden title="Voltar pra tela de gravação"><i class="rec"></i><span>REC</span><b id="chip-rec-time">0:00</b></button>
         <button class="chip action update" id="chip-update" hidden title="Atualizar o PainelDeck">
           <svg viewBox="0 0 24 24" class="ico-up"><path d="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-2.05-4.95L14 10h7V3l-2.64 2.64A8.97 8.97 0 0 0 12 3Z"/></svg>
           <span id="chip-update-text">Atualizar</span>
@@ -107,25 +109,40 @@
       <div class="shelf" id="shelf"></div>
     </section>
 
-    <!-- ===== sessões do Claude Code do PC (C#: Bridge.call("claudeSessions"); sessions.js) ===== -->
-    <section class="card sessions card-in" style="--i:3" id="sessions">
+    <!-- ===== gravação (rec.js): botão de gravar no OBS, faixas de áudio e últimas gravações ===== -->
+    <section class="card reccard card-in" style="--i:3" id="reccard">
       <div class="card-head">
-        <span class="label">CLAUDE · SESSÕES</span>
-        <span class="ses-side"><span class="ses-count" id="ses-count"></span>
-          <button class="head-btn" id="ses-new" title="Abrir uma sessão nova do Claude Code (por áudio ou digitando)">
-            <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6Z"/></svg><span>nova</span>
-          </button></span>
+        <span class="label">GRAVAÇÃO</span>
+        <span class="rc-pill" id="rc-pill"><i></i><span id="rc-pill-text">OBS</span></span>
       </div>
-      <div class="ses-wrap">
-        <ol class="ses-list" id="ses-list"></ol>
-        <div class="ses-detail" id="ses-detail" hidden>
-          <div class="sd-head">
-            <button class="sd-back" id="sd-back" title="Voltar pra lista"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12Z"/></svg></button>
-            <div class="sd-name"><div class="sd-title" id="sd-title"></div><div class="sd-meta" id="sd-meta"></div></div>
-          </div>
-          <div class="sd-chat" id="sd-chat"></div>
-          <div class="sd-compose" id="sd-compose"></div>
+      <div class="rc-main">
+        <button class="rc-btn" id="rc-btn" title="Gravar o monitor principal no OBS"><span class="core"></span></button>
+        <div class="rc-title" id="rc-title">GRAVAR</div>
+        <div class="rc-sub" id="rc-sub">&nbsp;</div>
+      </div>
+      <div class="rc-sec">
+        <div class="rc-info">
+          <span class="k">CENA</span><span class="v" id="rc-scene">—</span>
+          <span class="k">DESTINO</span><span class="v" id="rc-dest">—</span>
         </div>
+      </div>
+      <div class="rc-sec">
+        <div class="rc-sec-head">
+          <span class="label">FAIXAS DE ÁUDIO</span>
+          <button class="head-btn" id="rc-test" title="Mostra os níveis ao vivo por 20 segundos, sem gravar">
+            <svg viewBox="0 0 24 24"><path d="M3 10h3v4H3Zm5-4h3v12H8Zm5 2h3v8h-3Zm5-5h3v18h-3Z"/></svg><span>testar</span>
+          </button>
+        </div>
+        <div id="rc-tracks"></div>
+      </div>
+      <div class="rc-sec rc-recent">
+        <div class="rc-sec-head">
+          <span class="label">ÚLTIMAS GRAVAÇÕES</span>
+          <button class="head-btn" id="rc-folder" title="Abrir a pasta das gravações">
+            <svg viewBox="0 0 24 24"><path d="M3 5h7l2 2h9v12H3Z"/></svg><span>pasta</span>
+          </button>
+        </div>
+        <ul class="rc-list" id="rc-list"></ul>
       </div>
     </section>
 
@@ -174,6 +191,74 @@
     </section>
   </main>
 
+  <!-- ===== tela cheia de gravação (rec.js): entra sozinha quando o OBS começa a gravar ===== -->
+  <main id="recstage">
+    <header class="r-top" style="--i:0">
+      <div class="r-badge"><i class="rec"></i><span id="r-state">GRAVANDO</span></div>
+      <div class="brand">
+        <span class="brand-name">PAINELDECK</span>
+        <span class="brand-sub">GRAVAÇÃO</span>
+      </div>
+      <div class="chips">
+        <div class="chip" id="r-scene" title="Cena do OBS que está sendo gravada">
+          <svg viewBox="0 0 24 24"><path d="M3 4h18v13H3Zm2 2v9h14V6Zm3 13h8v2H8Z"/></svg><span id="r-scene-name">—</span>
+        </div>
+        <div class="chip playing" id="r-game" hidden><span>JOGANDO</span><b id="r-game-name"></b></div>
+        <button class="chip action" id="r-min" title="Ver o painel normal sem parar de gravar">
+          <svg viewBox="0 0 24 24"><path d="M3 3h8v8H3Zm10 0h8v8h-8ZM3 13h8v8H3Zm10 0h8v8h-8Z"/></svg><span>Ver painel</span>
+        </button>
+      </div>
+      <div class="clock">
+        <div class="time"><span id="r-hh">--</span><span class="colon">:</span><span id="r-mm">--</span></div>
+        <div class="date">AGORA</div>
+      </div>
+    </header>
+
+    <section class="card r-hero" style="--i:1">
+      <div class="r-clock">
+        <div class="r-time"><span id="r-t-h">0</span><i>:</i><span id="r-t-m">00</span><i>:</i><span id="r-t-s">00</span><small id="r-t-d">.0</small></div>
+        <div class="r-file"><svg viewBox="0 0 24 24"><path d="M4 5h11v4l5-3v12l-5-3v4H4Z"/></svg><span id="r-file">—</span></div>
+      </div>
+      <div class="r-stats">
+        <div class="stat" id="r-st-size"><span class="k">TAMANHO</span><b class="v" id="r-size">--</b><span class="s" id="r-rate">&nbsp;</span></div>
+        <div class="stat" id="r-st-free"><span class="k">ESPAÇO LIVRE</span><b class="v" id="r-free">--</b><span class="s" id="r-fits">&nbsp;</span></div>
+        <div class="stat" id="r-st-video"><span class="k">VÍDEO</span><b class="v" id="r-fps">--</b><span class="s" id="r-drop">&nbsp;</span></div>
+        <div class="stat" id="r-st-pc"><span class="k">PC</span><b class="v" id="r-pc">--</b><span class="s" id="r-pc-s">&nbsp;</span></div>
+      </div>
+    </section>
+
+    <section class="card r-tl" style="--i:2">
+      <div class="card-head"><span class="label">LINHA DO TEMPO</span><span class="r-scale" id="r-scale">&nbsp;</span></div>
+      <div class="r-body">
+        <div class="r-heads" id="r-heads"></div>
+        <div class="r-canvas"><canvas id="r-tl-canvas"></canvas></div>
+        <div class="r-done">
+          <div class="r-done-box">
+            <div class="kicker"><svg viewBox="0 0 24 24"><path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6 11-11-1.4-1.4Z"/></svg><span>GRAVAÇÃO SALVA</span></div>
+            <div class="nm" id="r-done-name">—</div>
+            <div class="mt" id="r-done-meta">&nbsp;</div>
+            <div class="row">
+              <button class="r-btn sm" id="r-done-open"><svg viewBox="0 0 24 24"><path d="M3 5h7l2 2h9v12H3Z"/></svg>Abrir a pasta</button>
+              <button class="r-btn sm back" id="r-done-back">Voltar pro painel <small id="r-done-count"></small></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card r-vu" style="--i:3">
+      <div class="card-head"><span class="label">NÍVEIS</span><span class="live"><i></i>ao vivo</span></div>
+      <div class="r-vus"><canvas id="r-vu-canvas"></canvas></div>
+      <div class="r-vufoot" id="r-vufoot"></div>
+    </section>
+
+    <footer class="r-ctl" style="--i:4">
+      <button class="r-btn" id="r-pause"><svg viewBox="0 0 24 24"><path d="M6 5h4v14H6Zm8 0h4v14h-4Z"/></svg><span id="r-pause-text">Pausar</span></button>
+      <button class="r-btn" id="r-mark" title="Põe uma marca neste ponto da gravação"><svg viewBox="0 0 24 24"><path d="M5 3h2v18H5Zm3 1h11l-3 4 3 4H8Z"/></svg>Marcar <small id="r-mark-n"></small></button>
+      <button class="r-btn stop" id="r-stop"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2.5"/></svg><span id="r-stop-text">Parar e salvar</span><small id="r-stop-key"></small></button>
+    </footer>
+  </main>
+
   <div id="toast"></div>
 
   <!-- o app.js do clássico desenha o deck aqui (escondido): games/macros/editor dependem dele (App.deck, App.toast) -->
@@ -186,6 +271,6 @@
   <script src="app.js"></script>
   <script src="editor.js"></script>
   <script src="scenes/navy/navy.js"></script>
-  <script src="scenes/navy/sessions.js"></script>
+  <script src="scenes/navy/rec.js"></script>
 </body>
 </html>
