@@ -266,7 +266,51 @@ internal sealed class Recorder : IDisposable
             }
             catch { /* fica do tamanho original */ }
         }
+        await EnsureAudioAsync(sceneName);
         await obs.RequestAsync("SetCurrentProgramScene", new JsonObject { ["sceneName"] = sceneName });
+    }
+
+    private static readonly (string Special, string Kind, string Name)[] AudioKinds =
+    {
+        ("mic1", "wasapi_input_capture", "Microfone (PainelDeck)"),
+        ("desktop1", "wasapi_output_capture", "Som do sistema (PainelDeck)"),
+    };
+
+    /// <summary>
+    /// Garante microfone e som do sistema na cena do painel. Com o Mic/Aux ou o Áudio do desktop DESATIVADOS nas
+    /// configurações do OBS (aí o áudio de cada um só existe como fonte dentro de alguma cena), põe na cena do painel
+    /// a fonte de captura de áudio que já existir no OBS; se não existir nenhuma, cria uma com o dispositivo padrão do Windows.
+    /// </summary>
+    private async Task EnsureAudioAsync(string sceneName)
+    {
+        JsonNode? special = null;
+        try { special = await obs.RequestAsync("GetSpecialInputs", null); } catch { }
+        foreach (var (key, kind, name) in AudioKinds)
+        {
+            if ((string?)special?[key] is { Length: > 0 }) continue; // fonte global ligada: já entra em toda cena
+            try
+            {
+                var existing = await FirstInputAsync(kind);
+                if (existing == null)
+                {
+                    await obs.RequestAsync("CreateInput", new JsonObject
+                    {
+                        ["sceneName"] = sceneName, ["inputName"] = name, ["inputKind"] = kind,
+                        ["inputSettings"] = new JsonObject { ["device_id"] = "default" }, ["sceneItemEnabled"] = true,
+                    });
+                    continue;
+                }
+                try { await obs.RequestAsync("GetSceneItemId", new JsonObject { ["sceneName"] = sceneName, ["sourceName"] = existing }); }
+                catch { await obs.RequestAsync("CreateSceneItem", new JsonObject { ["sceneName"] = sceneName, ["sourceName"] = existing, ["sceneItemEnabled"] = true }); }
+            }
+            catch { /* sem essa fonte: a faixa aparece como "fonte não achada" no painel */ }
+        }
+    }
+
+    private async Task<string?> FirstInputAsync(string kind)
+    {
+        var list = (await obs.RequestAsync("GetInputList", new JsonObject { ["inputKind"] = kind }))?["inputs"] as JsonArray;
+        return (string?)list?.FirstOrDefault()?["inputName"];
     }
 
     private void OpenInExplorer(string? file)
@@ -383,6 +427,9 @@ internal sealed class Recorder : IDisposable
         JsonNode? special = null;
         try { special = await obs.RequestAsync("GetSpecialInputs", null); } catch { }
         var defaults = new[] { (string?)special?["mic1"], (string?)special?["desktop1"] };
+        for (int i = 0; i < defaults.Length; i++) // Mic/Aux ou Áudio do desktop desativados no OBS: usa a fonte de captura de áudio que existir
+            if (string.IsNullOrEmpty(defaults[i]))
+                try { defaults[i] = await FirstInputAsync(AudioKinds[i].Kind); } catch { }
         var fresh = new List<Track>();
         for (int i = 0; i < cfg.Tracks.Length; i++)
         {
