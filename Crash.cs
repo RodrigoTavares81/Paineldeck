@@ -17,6 +17,9 @@ internal static class Crash
     /// <summary>Limpeza rápida antes de sair num crash (ícone da bandeja, PresentMon...).</summary>
     public static event Action? BeforeExit;
 
+    /// <summary>O app está fechando de propósito (Sair, reiniciar, atualizar): um erro agora só vai pro log, sem reabrir.</summary>
+    public static volatile bool Exiting;
+
     public static void Install(string root, bool restart)
     {
         logDir = Path.Combine(root, "logs");
@@ -43,9 +46,9 @@ internal static class Crash
     public static void Fatal(Exception? ex)
     {
         if (Interlocked.Exchange(ref handling, 1) == 1) return;
-        Log("erro grave", ex);
+        Log(Exiting ? "erro ao fechar" : "erro grave", ex);
         try { BeforeExit?.Invoke(); } catch { }
-        if (autoRestart && AllowRestart()) Relaunch();
+        if (!Exiting && autoRestart && AllowRestart()) Relaunch();
         Environment.Exit(1);
     }
 

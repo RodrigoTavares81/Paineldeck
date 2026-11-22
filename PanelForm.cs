@@ -42,11 +42,15 @@ public sealed class PanelForm : Form
     private IntPtr lastExternalWindow;
     private bool editMode;
     private bool quitting; // fechando pra atualizar/reiniciar
+    private bool shutDown; // limpeza do fechamento já feita (Shutdown)
+    // fila de mensagens da janela: funciona mesmo antes do handle existir (monitor desligado ao abrir) e não explode depois de fechar
+    private readonly SynchronizationContext ui;
     private readonly uint myPid = (uint)Environment.ProcessId;
 
     internal PanelForm(Settings settings)
     {
         this.settings = settings;
+        ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         deck = new Deck(settings.Root);
         deck.Reload();
         recorder = new Recorder(settings, deck);
@@ -89,18 +93,53 @@ public sealed class PanelForm : Form
         deckDebounce.Tick += (_, _) => { deckDebounce.Stop(); deck.Reload(); PushDeck(); };
 
         Load += async (_, _) => await InitWebAsync();
-        FormClosed += (_, _) =>
-        {
-            Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // evento estático: soltar senão vaza
-            hotkeys.Dispose();
-            rest?.CloseNow(); media.Dispose(); recorder.Dispose();
-            game.Dispose(); fps.Dispose(); playtime.Dispose(); updater.Dispose();
-            tray.Visible = false; tray.Dispose(); watcher?.Dispose(); deckWatcher?.Dispose();
-        };
+        FormClosed += (_, _) => Shutdown();
+    }
+
+    /// <summary>
+    /// "Sair" da bandeja: fecha DE VERDADE. Não depende da janela (escondida ou nunca criada, com o monitor do painel
+    /// desligado, o Close() sozinho não fazia nada) e não deixa o "reabrir sozinho" do Crash pegar um erro do fechamento.
+    /// O processo termina no Program.cs (Environment.Exit), mesmo com alguma thread ainda rodando.
+    /// </summary>
+    private void Quit()
+    {
+        quitting = true;
+        Shutdown();
+        Application.Exit();
+    }
+
+    /// <summary>Solta tudo uma vez só; um erro numa parte não impede as outras (nem vira "crash" que reabre o app).</summary>
+    private void Shutdown()
+    {
+        if (shutDown) return;
+        shutDown = true;
+        Crash.Exiting = true;
+        void Try(Action a) { try { a(); } catch (Exception ex) { Crash.Log("erro ao fechar", ex); } }
+        Try(() => { statusTimer.Stop(); focusTimer.Stop(); meterTimer.Stop(); reloadDebounce.Stop(); deckDebounce.Stop(); screenDebounce.Stop(); });
+        Try(() => Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged); // evento estático: soltar senão vaza
+        Try(() => { if (watcher != null) watcher.EnableRaisingEvents = false; if (deckWatcher != null) deckWatcher.EnableRaisingEvents = false; });
+        Try(hotkeys.Dispose);
+        Try(() => rest?.CloseNow());
+        Try(media.Dispose);
+        Try(recorder.Dispose); // só fecha a conexão com o OBS; o OBS em si continua aberto (pode estar gravando)
+        Try(game.Dispose);
+        Try(fps.Dispose); // mata o PresentMon
+        Try(playtime.Dispose);
+        Try(updater.Dispose);
+        Try(() => { tray.Visible = false; tray.Dispose(); });
+        Try(() => { watcher?.Dispose(); deckWatcher?.Dispose(); });
+    }
+
+    /// <summary>Roda na thread da janela. Depois de fechar, ignora (antes um evento atrasado aqui dava erro e o app reabria).</summary>
+    private void OnUi(Action a)
+    {
+        if (shutDown) return;
+        try { ui.Post(_ => { if (!shutDown && !IsDisposed) a(); }, null); }
+        catch (InvalidOperationException) { /* fechando */ }
     }
 
     // ---------- monitor do painel ----------
-    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => BeginInvoke(() =>
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => OnUi(() =>
     {
         rest?.CloseNow(); // monitor plugou/desplugou: o layout do descanso não vale mais
         BumpScreen();
@@ -227,7 +266,7 @@ public sealed class PanelForm : Form
         cw.Settings.IsStatusBarEnabled = false;
         cw.Settings.AreDefaultContextMenusEnabled = false;
         cw.WebMessageReceived += (_, e) => _ = HandleMessageAsync(e.WebMessageAsJson);
-        cw.ProcessFailed += (_, e) => BeginInvoke(() => OnWebViewFailed(e.ProcessFailedKind));
+        cw.ProcessFailed += (_, e) => OnUi(() => OnWebViewFailed(e.ProcessFailedKind));
         cw.Navigate(settings.PanelUrl);
 
         statusTimer.Start();
@@ -248,7 +287,7 @@ public sealed class PanelForm : Form
     /// <summary>Fecha e abre de novo (a instância nova espera esta sair).</summary>
     private void Restart()
     {
-        if (quitting) return;
+        if (quitting || shutDown) return;
         if (!Crash.AllowRestart()) return;
         quitting = true;
         Crash.Relaunch();
@@ -447,7 +486,7 @@ public sealed class PanelForm : Form
             IncludeSubdirectories = true,
             NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
         };
-        void Bump() => BeginInvoke(new Action(() => { reloadDebounce.Stop(); reloadDebounce.Start(); }));
+        void Bump() => OnUi(() => { reloadDebounce.Stop(); reloadDebounce.Start(); });
         watcher.Changed += (_, _) => Bump();
         watcher.Created += (_, _) => Bump();
         watcher.Deleted += (_, _) => Bump();
@@ -459,7 +498,7 @@ public sealed class PanelForm : Form
         {
             NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
         };
-        void BumpDeck() => BeginInvoke(new Action(() => { deckDebounce.Stop(); deckDebounce.Start(); }));
+        void BumpDeck() => OnUi(() => { deckDebounce.Stop(); deckDebounce.Start(); });
         deckWatcher.Changed += (_, _) => BumpDeck();
         deckWatcher.Created += (_, _) => BumpDeck();
         deckWatcher.Renamed += (_, _) => BumpDeck();
@@ -568,7 +607,7 @@ public sealed class PanelForm : Form
             };
         };
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Sair", null, (_, _) => Close());
+        menu.Items.Add("Sair", null, (_, _) => Quit());
         tray.ContextMenuStrip = menu;
     }
 }
